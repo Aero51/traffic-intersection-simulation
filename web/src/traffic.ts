@@ -152,12 +152,14 @@ export class Traffic {
   private nextId = 1;
   private shared = new Map<Route, Map<Route, number>>();
   private spawnTimers = new Map<string, number>();
+  private spawnIntervals: Record<string, [number, number]>;
 
   constructor(
     defs: RouteDef[],
-    private spawnIntervals: Record<string, [number, number]>,
+    spawnIntervals: Record<string, [number, number]>,
     private random: () => number = Math.random,
   ) {
+    this.spawnIntervals = { ...spawnIntervals };
     this.routes = defs.map(buildRoute);
     for (const a of this.routes) {
       const m = new Map<Route, number>();
@@ -166,6 +168,18 @@ export class Traffic {
     }
     // Stagger the first cars so lanes don't all start at once.
     for (const lane of Object.keys(spawnIntervals)) this.spawnTimers.set(lane, this.random() * 2);
+  }
+
+  /** Change how often cars enter a lane, in seconds [min, max]; null stops new cars. */
+  setSpawnInterval(lane: string, interval: [number, number] | null): void {
+    if (!interval) {
+      delete this.spawnIntervals[lane];
+      return;
+    }
+    this.spawnIntervals[lane] = interval;
+    // Don't keep waiting out a long timer from a lower rate.
+    const [min, max] = interval;
+    if ((this.spawnTimers.get(lane) ?? 0) > max) this.spawnTimers.set(lane, min + this.random() * (max - min));
   }
 
   /** Add a car at the start of a route if there's room. Returns it, or null. */

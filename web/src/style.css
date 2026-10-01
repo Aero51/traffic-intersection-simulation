@@ -124,6 +124,14 @@ body {
 .tipkalo:active {
   background: linear-gradient(#c8c8c8, #e8e8e8);
 }
+.tipkalo.is-requested {
+  border-color: #b88a00;
+  background: linear-gradient(#fff3b0, #ffc928);
+  box-shadow: 0 0 8px rgba(255, 201, 40, 0.8);
+}
+.tipkalo-wrap .tipkalo {
+  white-space: nowrap;
+}
 
 /* ---- Izbornik (sliding menu, iphoneMenu in GlavnaKlasa) ----
    --u is one pixel of the original 900px-wide scene, so the panel scales with the map. */
@@ -139,8 +147,9 @@ body {
   transition: transform 700ms ease-in;
 }
 .menu.is-open {
-  /* TranslateTransition toY(-303) */
-  transform: translateY(calc(-303 * var(--u)));
+  /* The original slid up by a fixed 303px (TranslateTransition toY(-303)); the panel is
+     taller now, so it slides up by its body height, keeping the header's bottom edge put. */
+  transform: translateY(calc(-100% + 45 * var(--u)));
   transition-timing-function: ease-out;
 }
 
@@ -189,8 +198,48 @@ body {
   border-bottom: 1px solid #a8abb0;
 }
 
-.menu-note {
-  font-weight: 200;
+.menu-traffic {
+  margin: calc(8 * var(--u)) 0 0;
+  padding: 0;
+  min-width: 0;
+}
+.menu-subhead {
+  float: left; /* lets the legend sit inside the card like a normal row */
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(30 * var(--u));
+  padding-block: 0;
+  background: #f1f3f6;
+}
+.menu-subhead + * {
+  clear: both;
+}
+.menu-unit {
+  font-size: calc(13 * var(--u));
+  font-weight: normal;
+  color: #555;
+}
+.menu-slider {
+  min-height: calc(34 * var(--u));
+  font-size: calc(15 * var(--u));
+}
+.menu-slider:last-child {
+  border-bottom: 0;
+}
+.menu-slider label {
+  flex: 0 0 calc(92 * var(--u));
+  white-space: nowrap;
+}
+.menu-slider input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: #4a6c9b;
+}
+.menu-slider output {
+  flex: 0 0 calc(24 * var(--u));
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .menu select {

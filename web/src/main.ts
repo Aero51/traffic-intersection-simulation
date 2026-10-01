@@ -5,7 +5,7 @@ import { Simulation, type SimSnapshot } from './sim';
 import { createMenu } from './menu';
 import { createIntro } from './intro';
 import { Traffic } from './traffic';
-import { LANE_SPAWN, ROUTE_DEFS } from './routes';
+import { ROUTE_DEFS, TRAFFIC_GROUPS, initialIntervals, laneIntervals } from './routes';
 import { CarLayer } from './cars';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -67,7 +67,7 @@ stage.appendChild(main);
 
 const { svg, signals, carLayer } = buildScene(main);
 const sim = new Simulation();
-const traffic = new Traffic(ROUTE_DEFS, LANE_SPAWN);
+const traffic = new Traffic(ROUTE_DEFS, initialIntervals());
 
 // Phones get a second, finger-sized Tipkalo below the map.
 const phoneControls = document.createElement('div');
@@ -75,8 +75,25 @@ phoneControls.className = 'phone-controls';
 phoneControls.innerHTML = '<button type="button" class="tipkalo">Tipkalo — zahtjev za pješake</button>';
 main.appendChild(phoneControls);
 
-for (const button of [svg.querySelector('.tipkalo')!, phoneControls.querySelector('.tipkalo')!]) {
-  button.addEventListener('click', () => sim.requestPedestrians());
+const tipkala = [svg.querySelector<HTMLButtonElement>('.tipkalo')!, phoneControls.querySelector<HTMLButtonElement>('.tipkalo')!];
+const tipkaloLabels = ['Tipkalo', 'Tipkalo — zahtjev za pješake'];
+let tipkaloPending = false;
+for (const button of tipkala) {
+  button.addEventListener('click', () => {
+    sim.requestPedestrians();
+    renderTipkalo();
+  });
+}
+
+/** Like the "signal coming" lamp on a real push button: lit until pedestrians get green. */
+function renderTipkalo(): void {
+  const pending = sim.pedestrianRequestPending;
+  if (pending === tipkaloPending) return;
+  tipkaloPending = pending;
+  tipkala.forEach((button, i) => {
+    button.classList.toggle('is-requested', pending);
+    button.textContent = pending ? (i === 0 ? 'Čekajte…' : 'Zahtjev primljen — čekajte zeleno') : tipkaloLabels[i];
+  });
 }
 
 const vehicleSignals = signals.filter((s) => s.placement.kind === 'vehicle');
@@ -86,6 +103,13 @@ const menu = createMenu(main, {
   onApply: (i, timing) => sim.applyTiming(i, timing),
   // The original scaled the selected signal to 2x (listenerPromjeneSemafora).
   onSelect: (i) => vehicleSignals.forEach((s, j) => s.setSelected(j === i)),
+  trafficGroups: TRAFFIC_GROUPS,
+  onTrafficChange: (id, carsPerMinute) => {
+    const group = TRAFFIC_GROUPS.find((g) => g.id === id)!;
+    for (const [lane, interval] of Object.entries(laneIntervals(group, carsPerMinute))) {
+      traffic.setSpawnInterval(lane, interval);
+    }
+  },
 });
 vehicleSignals.forEach((s, i) => s.root.addEventListener('click', () => menu.select(i)));
 
@@ -100,6 +124,7 @@ function frame(now: number): void {
   const snap = sim.snapshot();
   traffic.step(dt, snap);
   render(signals, snap);
+  renderTipkalo();
   carLayer.render(traffic.cars);
   requestAnimationFrame(frame);
 }

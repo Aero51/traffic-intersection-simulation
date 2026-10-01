@@ -128,6 +128,21 @@ describe('Traffic', () => {
     expect(a.s - b.s).toBeGreaterThanOrEqual(CAR_LENGTH + MIN_GAP - 0.01);
   });
 
+  it('stops and restarts spawning when a lane rate changes', () => {
+    const traffic = new Traffic([straight], { a: [1, 1] }, () => 0.5);
+    const green = snapshot('green');
+    run(traffic, 5, green);
+    expect(traffic.cars.length).toBeGreaterThan(2);
+
+    traffic.setSpawnInterval('a', null);
+    run(traffic, 10, green);
+    expect(traffic.cars).toHaveLength(0);
+
+    traffic.setSpawnInterval('a', [0.5, 0.5]);
+    run(traffic, 3, green);
+    expect(traffic.cars.length).toBeGreaterThanOrEqual(2); // entry capacity is ~1 car per 1.2 s
+  });
+
   it('removes cars after they leave the route', () => {
     const traffic = manual([straight]);
     traffic.spawn(traffic.routes[0]);

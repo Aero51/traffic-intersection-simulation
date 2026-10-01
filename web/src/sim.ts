@@ -63,8 +63,10 @@ export class Simulation {
   private vehicles: Lights[] = Array.from({ length: VEHICLE_COUNT }, dark);
   private pedestrians: Lights[] = Array.from({ length: PEDESTRIAN_COUNT }, dark);
   private turns: Lights[] = Array.from({ length: TURN_COUNT }, dark);
-  /** Mirrors `iskljuciPjesake`: false while a Tipkalo request is pending. */
-  private pedestriansIdle = true;
+  /** Tipkalo was pressed; served at the start of signal 5's next cycle. (`iskljuciPjesake`) */
+  private pedestrianRequest = false;
+  /** The current cycle is serving a request: pedestrians cross, turn arrows stay off. */
+  private pedestrianCycle = false;
   private _time = 0;
   private _mode: Mode = 'normal';
 
@@ -99,9 +101,17 @@ export class Simulation {
     };
   }
 
-  /** "Tipkalo": pedestrians at signal 5 get green at the start of its next cycle. */
+  /** True from a Tipkalo press until the pedestrians get green. */
+  get pedestrianRequestPending(): boolean {
+    return this.pedestrianRequest;
+  }
+
+  /**
+   * "Tipkalo": at the start of signal 5's next cycle, pedestrians 8 and 9 get green while
+   * signal 5 is red, then 6 and 7 while the main road is red. Ignored in "Policajac" mode.
+   */
   requestPedestrians(): void {
-    this.pedestriansIdle = false;
+    if (this._mode === 'normal') this.pedestrianRequest = true;
   }
 
   /** Advance the clock by `dt` seconds, firing every keyframe in (time, time + dt]. */
@@ -164,9 +174,16 @@ export class Simulation {
   /** sviStop(): stop all tracks and turn every lamp off. */
   private stopAll(): void {
     this.tracks = [];
+    this.pedestrianRequest = false;
+    this.pedestrianCycle = false;
     for (const group of [this.vehicles, this.pedestrians, this.turns]) {
       for (let i = 0; i < group.length; i++) group[i] = dark();
     }
+  }
+
+  /** Turn arrows would send cars across the crosswalks, so they stay off for pedestrians. */
+  private get arrowsAllowed(): boolean {
+    return !this.pedestrianRequest && !this.pedestrianCycle;
   }
 
   private cyclePosition(index: number): number {
@@ -226,14 +243,35 @@ export class Simulation {
         fire: () => {
           v().red = true;
           v().yellow = false;
-          if (drivesTurns && this.pedestriansIdle) this.turns[0].green = true;
+          if (drivesTurns && this.arrowsAllowed) this.turns[0].green = true;
         },
       },
-      { at: open + closed, fire: () => { if (drivesTurns) this.turns[0].green = false; } },
+      {
+        // Pedestrians 6 and 7 cross the main road while it is red (not in the original).
+        at: open + YELLOW + 1,
+        fire: () => {
+          if (!drivesTurns || !this.pedestrianCycle) return;
+          for (const ped of [this.pedestrians[0], this.pedestrians[1]]) {
+            ped.red = false;
+            ped.green = true;
+          }
+        },
+      },
       {
         at: open + closed,
         fire: () => {
-          if (drivesTurns && this.pedestriansIdle) {
+          if (!drivesTurns) return;
+          this.turns[0].green = false;
+          for (const ped of [this.pedestrians[0], this.pedestrians[1]]) {
+            ped.green = false;
+            ped.red = true;
+          }
+        },
+      },
+      {
+        at: open + closed,
+        fire: () => {
+          if (drivesTurns && this.arrowsAllowed) {
             this.turns[1].green = true;
             this.turns[2].green = true;
           }
@@ -265,12 +303,13 @@ export class Simulation {
           v().red = true;
           v().yellowBlinking = false;
           for (const ped of p) ped.red = true;
-          if (!this.pedestriansIdle) {
+          this.pedestrianCycle = this.pedestrianRequest;
+          if (this.pedestrianRequest) {
             for (const ped of [p[3], p[2]]) {
               ped.red = false;
               ped.green = true;
             }
-            this.pedestriansIdle = true;
+            this.pedestrianRequest = false;
           }
         },
       },

@@ -77,11 +77,64 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
 ];
 
-/** Seconds between cars entering each lane: [min, max]. */
-export const LANE_SPAWN: Record<string, [number, number]> = {
-  'nw-right': [2.5, 5.5],
-  'nw-left': [4, 8],
-  'se-left': [2.5, 5.5],
-  'se-right': [4, 8],
-  side: [4, 8],
-};
+/** Traffic sliders in the menu: one per approach, each feeding one or more lanes. */
+export interface TrafficGroup {
+  id: string;
+  label: string;
+  description: string;
+  /** Share of the group's cars that use each lane. */
+  lanes: Record<string, number>;
+  /** Cars per minute. */
+  initial: number;
+}
+
+export const MAX_CARS_PER_MINUTE = 40;
+
+export const TRAFFIC_GROUPS: TrafficGroup[] = [
+  {
+    id: 'se',
+    label: 'Glavna ↘',
+    description: 'Glavna cesta, vozila prema jugoistoku',
+    lanes: { 'se-left': 0.6, 'se-right': 0.4 },
+    initial: 20,
+  },
+  {
+    id: 'nw',
+    label: 'Glavna ↖',
+    description: 'Glavna cesta, vozila prema sjeverozapadu',
+    lanes: { 'nw-right': 0.6, 'nw-left': 0.4 },
+    initial: 20,
+  },
+  {
+    id: 'side',
+    label: 'Sporedna ←',
+    description: 'Sporedna cesta, vozila prema raskrižju',
+    lanes: { side: 1 },
+    initial: 8,
+  },
+];
+
+/**
+ * Spawn interval per lane for a group at `carsPerMinute`: the mean gap gives that rate,
+ * with +-40% jitter so cars don't arrive like clockwork. Null means no cars.
+ */
+export function laneIntervals(group: TrafficGroup, carsPerMinute: number): Record<string, [number, number] | null> {
+  const out: Record<string, [number, number] | null> = {};
+  for (const [lane, share] of Object.entries(group.lanes)) {
+    const perMinute = carsPerMinute * share;
+    const mean = 60 / perMinute;
+    out[lane] = perMinute > 0 ? [mean * 0.6, mean * 1.4] : null;
+  }
+  return out;
+}
+
+/** Initial spawn intervals for every lane. */
+export function initialIntervals(): Record<string, [number, number]> {
+  const out: Record<string, [number, number]> = {};
+  for (const group of TRAFFIC_GROUPS) {
+    for (const [lane, interval] of Object.entries(laneIntervals(group, group.initial))) {
+      if (interval) out[lane] = interval;
+    }
+  }
+  return out;
+}

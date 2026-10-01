@@ -1,6 +1,7 @@
 // "Izbornik": the sliding settings panel from GlavnaKlasa.start() (iphoneMenu group).
 
 import { VEHICLE_COUNT, type Mode, type SignalTiming } from './sim';
+import { MAX_CARS_PER_MINUTE, type TrafficGroup } from './routes';
 
 export interface MenuCallbacks {
   /** Current timing of a vehicle signal (0-based index), to fill the spinners. */
@@ -8,6 +9,9 @@ export interface MenuCallbacks {
   onModeChange(mode: Mode): void;
   onSelect(index: number | null): void;
   onApply(index: number, timing: SignalTiming): void;
+  /** Traffic sliders, applied immediately (no Prihvati needed). */
+  trafficGroups: TrafficGroup[];
+  onTrafficChange(groupId: string, carsPerMinute: number): void;
 }
 
 export interface Menu {
@@ -30,6 +34,14 @@ const spinner = (name: string, label: string, disabled = false) => `
     </div>
   </div>`;
 
+const slider = (g: TrafficGroup) => `
+  <div class="menu-row menu-slider">
+    <label for="traffic-${g.id}" title="${g.description}">${g.label}</label>
+    <input id="traffic-${g.id}" type="range" min="0" max="${MAX_CARS_PER_MINUTE}" step="1" value="${g.initial}"
+      data-group="${g.id}" aria-label="${g.description}, vozila po minuti" />
+    <output for="traffic-${g.id}">${g.initial}</output>
+  </div>`;
+
 export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   const root = document.createElement('section');
   root.className = 'menu';
@@ -48,9 +60,12 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
         ${spinner('signal', 'Semafor:')}
         ${spinner('open', 'Vrijeme otvorenosti:')}
         ${spinner('closed', 'Vrijeme zatvorenosti:', true)}
-        <div class="menu-row menu-note">Update:13.06.2013</div>
         <div class="menu-toolbar"><button type="submit" class="menu-apply">Prihvati</button></div>
       </div>
+      <fieldset class="menu-card menu-traffic">
+        <legend class="menu-row menu-subhead"><span>Promet</span><span class="menu-unit">vozila / min</span></legend>
+        ${cb.trafficGroups.map(slider).join('')}
+      </fieldset>
     </form>`;
   parent.appendChild(root);
 
@@ -129,6 +144,13 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     const n = Number(inputs.open.value);
     if (Number.isFinite(n)) setOpen(n);
     else show();
+  });
+
+  form.addEventListener('input', (e) => {
+    const range = e.target as HTMLInputElement;
+    if (range.type !== 'range' || !range.dataset.group) return;
+    range.nextElementSibling!.textContent = range.value;
+    cb.onTrafficChange(range.dataset.group, Number(range.value));
   });
 
   form.addEventListener('submit', (e) => {
