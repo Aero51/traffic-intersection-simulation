@@ -94,7 +94,9 @@ describe('junction conflicts', () => {
     let longestStop = 0;
     let example = '';
     let crosswalkStops = 0;
+    let stopsAfterLine = 0;
     const onCrosswalkFor = new Map<number, number>();
+    const wasMoving = new Map<number, boolean>();
     for (let i = 0; i < (minutes * 60) / dt; i++) {
       const before = sim.snapshot();
       // Automatic mode: the signal cycle only runs while someone waits (see main.ts).
@@ -110,6 +112,10 @@ describe('junction conflicts', () => {
         const there = c.v < 1 && onCrosswalk(c) ? before + dt : 0;
         onCrosswalkFor.set(c.id, there);
         if (there > 2 && before <= 2) crosswalkStops++;
+        // Once past its stop line a car may only slow down for the car in front, never come
+        // to a stop inside the junction.
+        if (c.v <= 1 && wasMoving.get(c.id) && c.s > c.route.stopAt + 1 && onScreen(c)) stopsAfterLine++;
+        wasMoving.set(c.id, c.v > 1);
       }
       const visible = traffic.cars.filter(onScreen);
       for (let a = 0; a < visible.length && !example; a++) {
@@ -123,11 +129,10 @@ describe('junction conflicts', () => {
       }
     }
     expect(example).toBe('');
-    // Cars wait at the stop line when the road beyond the junction is backed up. At this
-    // (over-)saturated load a queue still occasionally spills onto a crosswalk, mostly in
-    // flashing mode where nothing meters the traffic; before this rule it was 4.5-7/min.
-    expect(crosswalkStops / minutes).toBeLessThan(mode === 'flashing' ? 6 : 2.5);
-    expect(longestStop).toBeLessThan(120); // no gridlock: everyone gets going again
+    // Cars decide at the stop line and only go when they can get all the way through.
+    expect(stopsAfterLine).toBe(0);
+    expect(crosswalkStops).toBe(0);
+    expect(longestStop).toBeLessThan(60); // no gridlock or starvation: about a red phase at most
     expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(30); // cars per minute through
   }, 120_000);
 });

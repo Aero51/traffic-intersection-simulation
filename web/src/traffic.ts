@@ -99,6 +99,12 @@ export interface Car {
   braking: boolean;
   /** Standing still because something is in the way (last step). */
   blocked: boolean;
+  /** Has claimed its whole way through the junction (decided at its stop line). */
+  cleared: boolean;
+  /** Seconds spent waiting at its gate for another road's traffic (not a red light or a queue). */
+  waited: number;
+  /** Set each step while it waits at its gate for another road's traffic. */
+  yielding: boolean;
   indicator: 'left' | 'right' | null;
 }
 
@@ -117,16 +123,23 @@ const TOUCH_DISTANCE = 20;
 /** Merging roads approach at an angle; start zip merging while they're still this far apart. */
 const MERGE_DISTANCE = 45;
 /**
- * Past the stop line a car needs this much room beyond its own length (the crosswalk and
- * junction box) before it may cross the line, so it never stops on the crosswalk.
+ * Beyond the stop line a car needs this much room past its own length (the crosswalk)
+ * before it may enter, so it never ends up standing on the crosswalk.
  */
 const CLEAR_JUNCTION = 45;
+/** A merge stays claimed until the car's rear is this far past the point where the roads join. */
+const JOIN_MARGIN = 10;
+/** Seconds between one road's last car leaving a merge and the other road's car reaching it. */
+const MERGE_HEADWAY = 1;
 /** Longest time step the car model takes at once, so fast cars can't skip past each other. */
 const MAX_STEP = 1 / 60;
 /** A car yields if a car with priority would reach the crossing within this many seconds. */
 const GAP_TIME = 2.2;
-/** At a merge, cars this close to the merge point take turns (zip). */
-const MERGE_WINDOW = 120;
+/**
+ * After waiting this long for a gap, a car that gives way goes as soon as the crossing is
+ * physically free (like a driver nosing out), so it can't be starved by endless traffic.
+ */
+const PATIENCE = 8;
 
 /** How far before its stop line a waiting car is picked up by the induction loop. */
 export const LOOP_LENGTH = 50;
@@ -333,23 +346,28 @@ export function lightFor(control: Control, snap: SimSnapshot): Light {
 }
 
 // ------------------------------------------------------------------ traffic
+//
+// How the junction works: every car decides once, at its gate (its stop line, or just
+// before its first conflict if that comes earlier). It either claims its whole way through
+// - every crossing and merge on its route - or it waits at the gate. Once through the
+// gate it never stops for another road's car again; it only follows the car in front.
+// A claim blocks the *other* road only, so a platoon on the same route can share it.
+// Claims are released zone by zone as the car's rear leaves each one.
 
 export class Traffic {
   readonly routes: Route[];
   cars: Car[] = [];
+  readonly conflicts = new Map<Route, Conflict[]>();
   private nextId = 1;
   private shared = new Map<Route, Map<Route, number>>();
-  readonly conflicts = new Map<Route, Conflict[]>();
-  /** Per merge: car ids in the order they reached it (first come, first served). */
-  private mergeOrder = new Map<string, number[]>();
-  /** Speed of the car that limited the last roomAhead / mergeRoom result. */
-  private leaderV = Infinity;
-  /** The car that limited the last roomAhead result. */
-  private leaderCar: Car | null = null;
-  /** Crossing zones claimed by a car that is about to drive through them. */
-  private reservations = new Map<string, { car: number; start: number; end: number }>();
   private spawnTimers = new Map<string, number>();
   private targets = new Map<string, number>();
+  /** Where each route's cars decide whether they may enter the junction. */
+  private gate = new Map<Route, number>();
+  /** Cars holding each conflict zone (keyed like Conflict.key). */
+  private claims = new Map<string, Set<Car>>();
+  /** The car that limited the last roomAhead result. */
+  private leaderCar: Car | null = null;
 
   constructor(
     defs: RouteDef[],
@@ -374,7 +392,7 @@ export class Traffic {
       });
       this.conflicts.set(a, list);
     });
-    // Both routes' views of one crossing share a key, so a reservation covers both.
+    // Both routes' views of one crossing share a key, so a claim covers both.
     let n = 0;
     for (const [a, list] of this.conflicts) {
       for (const c of list) {
@@ -386,6 +404,10 @@ export class Traffic {
         if (twin) twin.key = c.key;
         n++;
       }
+    }
+    for (const r of this.routes) {
+      const first = Math.min(...this.conflicts.get(r)!.map((c) => c.at[0]));
+      this.gate.set(r, Math.min(r.stopAt, first - 2));
     }
     // Stagger the first cars so the sides don't all start at once.
     for (const g of groups) this.spawnTimers.set(g.id, this.random() * 2);
@@ -441,6 +463,9 @@ export class Traffic {
       color: CAR_COLORS[Math.floor(this.random() * CAR_COLORS.length)],
       braking: false,
       blocked: false,
+      cleared: false,
+      waited: 0,
+      yielding: false,
       indicator: null,
     };
     this.cars.push(car);
@@ -455,9 +480,9 @@ export class Traffic {
 
   private substep(dt: number, snap: SimSnapshot): void {
     this.spawnDue(dt);
-    this.queueAtMerges(snap);
 
-    // Free distance for each car, from positions at the start of the step.
+    // Free distance for each car, from positions at the start of the step. (Claims made
+    // here are seen by the cars evaluated after, so two cars can't both claim a zone.)
     const limits = this.cars.map((car) => this.limitFor(car, snap));
     this.cars.forEach((car, i) => {
       const limit = limits[i];
@@ -468,35 +493,21 @@ export class Traffic {
       car.v = car.v < target ? Math.min(target, car.v + ACCEL * dt) : Math.max(target, car.v - 3 * BRAKE * dt);
       car.s += Math.min(car.v * dt, Math.max(0, limit));
       car.blocked = limit < 0.5 && car.v < 1;
+      car.waited = car.yielding && car.blocked ? car.waited + dt : 0;
 
       const d = car.s - route.divergeAt;
       car.indicator = route.def.turn && d > -INDICATE_BEFORE && d < INDICATE_AFTER ? route.def.turn : null;
     });
     this.cars = this.cars.filter((c) => c.s - c.length < c.route.length);
-    const alive = new Map(this.cars.map((c) => [c.id, c]));
-    for (const [key, order] of this.mergeOrder) this.mergeOrder.set(key, order.filter((id) => alive.has(id)));
-    for (const [key, r] of this.reservations) {
-      const car = alive.get(r.car);
-      if (!car || car.s - car.length > r.end) this.reservations.delete(key);
-    }
-  }
 
-  /**
-   * Cars join a merge's queue once their signal lets them through (or when they get near
-   * the merge). That is before they commit to any crossing on the way, so they never have
-   * to stop inside one to let a merging car go first. The order never changes afterwards,
-   * so two roads can't keep swapping who goes first and end up blocking each other.
-   */
-  private queueAtMerges(snap: SimSnapshot): void {
-    for (const car of this.cars) {
-      for (const c of this.conflicts.get(car.route)!) {
-        if (c.kind !== 'merge') continue;
-        if (car.s < c.at[0] - MERGE_WINDOW && car.s <= car.route.stopAt) continue;
-        if (car.s <= car.route.stopAt && this.heldAtLine(car, snap)) continue;
-        let order = this.mergeOrder.get(c.key);
-        if (!order) this.mergeOrder.set(c.key, (order = []));
-        if (!order.includes(car.id)) order.push(car.id);
+    // Release zones the cars have left, and everything held by cars that drove off.
+    const alive = new Set(this.cars);
+    for (const [key, holders] of this.claims) {
+      for (const car of holders) {
+        const zone = this.conflicts.get(car.route)!.find((z) => z.key === key);
+        if (!alive.has(car) || !zone || car.s - car.length > claimEnd(zone)) holders.delete(car);
       }
+      if (holders.size === 0) this.claims.delete(key);
     }
   }
 
@@ -526,56 +537,21 @@ export class Traffic {
 
   /** Distance this car may still travel before it has to be stopped. */
   private limitFor(car: Car, snap: SimSnapshot): number {
-    const room = this.roomAhead(car.route, car.s, car);
-    const merge = this.mergeRoom(car);
-    const mergeV = this.leaderV;
-    let limit = Math.min(room, merge);
-    const toLine = car.route.stopAt - car.s;
-    if (this.heldAtLine(car, snap)) limit = Math.min(limit, Math.max(0, toLine));
+    const limit = Math.min(this.roomAhead(car.route, car.s, car), this.exitRoom(car));
+    car.yielding = false;
+    if (car.cleared) return Math.min(limit, this.mergeSafety(car)); // committed: only the car in front matters now
 
-    // Don't drive into the junction when the road beyond is backed up: wait at the line
-    // rather than end up stuck on the crosswalk. Judge by where the queue ahead will end
-    // up once it stops, not by the gap right now.
-    if (toLine >= -0.5 && toLine < 150) {
-      const ahead = Math.min(this.queueRoom(car, snap), merge < room || mergeV < 1 ? merge : Infinity);
-      if (ahead - toLine < car.length + CLEAR_JUNCTION) limit = Math.min(limit, Math.max(0, toLine));
+    if (this.heldAtLine(car, snap)) return Math.min(limit, Math.max(0, car.route.stopAt - car.s));
+    // Decide when the gate is about a stopping distance away (or already reached).
+    const toGate = this.gate.get(car.route)! - car.s;
+    if (toGate > (car.v * car.v) / (2 * BRAKE) + 15) return limit;
+    const verdict = this.canEnter(car, snap);
+    if (verdict === 'go') {
+      this.claimPassage(car);
+      return limit;
     }
-
-    const zones = this.conflicts.get(car.route)!.filter((c) => c.kind === 'cross').sort((a, b) => a.at[0] - b.at[0]);
-    for (let i = 0; i < zones.length; i++) {
-      const c = zones[i];
-      if (car.s >= c.at[0]) continue; // already in or past it: keep going
-      const toZone = c.at[0] - car.s;
-      if (toZone > 160 || toZone >= limit) continue;
-      // Zones close behind each other are one manoeuvre (e.g. a left turn across both
-      // oncoming lanes): only start it if the car can get through all of them.
-      const chain = [c];
-      let end = c.at[1];
-      for (let j = i + 1; j < zones.length && zones[j].at[0] <= end + car.length + 30; j++) {
-        chain.push(zones[j]);
-        end = Math.max(end, zones[j].at[1]);
-      }
-      const mine = (z: Conflict) => this.reservations.get(z.key)?.car === car.id;
-      const taken = (z: Conflict) => !mine(z) && this.reservations.has(z.key);
-      const committed = chain.every(mine);
-      if (
-        !committed &&
-        (limit < end - car.s + car.length || chain.some((z) => taken(z) || this.mustWaitAt(z, snap)))
-      ) {
-        limit = Math.min(limit, Math.max(0, toZone - 1));
-        continue;
-      }
-      // Going: once close enough that it's about to enter, claim every zone of the manoeuvre.
-      if (toZone <= (car.v * car.v) / (2 * BRAKE) + 12) {
-        for (const z of chain) this.reservations.set(z.key, { car: car.id, start: z.at[0], end: z.at[1] });
-      }
-    }
-    // Something else now holds this car back before a zone it claimed: let the claim go so
-    // it doesn't block the crossing while it waits.
-    for (const [key, r] of this.reservations) {
-      if (r.car === car.id && car.s < r.start && r.start - car.s > limit + 0.5) this.reservations.delete(key);
-    }
-    return limit;
+    car.yielding = verdict === 'other road';
+    return Math.min(limit, Math.max(0, toGate));
   }
 
   /** Stopping for the signal: red, or yellow when it can still stop comfortably. */
@@ -588,111 +564,113 @@ export class Traffic {
   }
 
   /**
-   * Whether a car must wait before crossing zone `c`: another car is in it, or a car with
-   * priority is about to reach it. (Room to get clear on the far side, so the junction
-   * isn't blocked, is checked by the caller.)
+   * May this car enter the junction now? Every conflict on its way must be free of the
+   * other road's cars (claimed or physically there); at a crossing where it gives way, no
+   * car with priority may be about to arrive; and there must be room to get all the way
+   * through the crossings (and off the crosswalk) without stopping.
    */
-  private mustWaitAt(c: Conflict, snap: SimSnapshot): boolean {
-    const [z0, z1] = c.otherAt;
-    for (const o of this.cars) {
-      if (o.route !== c.other) continue;
-      if (o.s > z0 && o.s - o.length < z1) return true; // occupied
-      if (!c.yields || o.s > z0 || o.blocked) continue; // a stuck car isn't coming
-      // Will a car with priority get there first? Not if its signal is holding it back.
-      if (o.route.stopAt < z0 && o.route.stopAt >= o.s - 0.5 && this.heldAtLine(o, snap)) continue;
-      if (z0 - o.s < 25 + o.v * GAP_TIME) return true;
+  private canEnter(car: Car, snap: SimSnapshot): 'go' | 'other road' | 'no room' {
+    let clearUntil = car.route.stopAt + CLEAR_JUNCTION;
+    for (const z of this.conflicts.get(car.route)!) {
+      if (z.kind === 'merge') {
+        // A merge can be far down the exit road: what matters is whether the other road's
+        // cars will be past it by the time this car gets there.
+        const arrival = Math.max(0, z.at[0] - car.s) / MAX_SPEED;
+        const leaveAt = z.join[1] + JOIN_MARGIN;
+        for (const o of this.cars) {
+          if (o.route !== z.other || o.s - o.length > leaveAt) continue;
+          const coming = o.cleared || (o.s > z.otherAt[0] && o.s - o.length < leaveAt);
+          if (!coming) continue;
+          if ((leaveAt + o.length - o.s) / Math.max(o.v, 20) + MERGE_HEADWAY > arrival) return 'other road';
+        }
+        continue;
+      }
+      for (const holder of this.claims.get(z.key) ?? []) if (holder.route === z.other) return 'other road';
+      const [o0, o1] = z.otherAt;
+      for (const o of this.cars) {
+        if (o.route !== z.other) continue;
+        if (o.s > o0 && o.s - o.length < o1) return 'other road'; // physically in the way
+        // Someone on the other road has run out of patience waiting: let them go first.
+        if (!o.cleared && o.waited > PATIENCE && o.waited > car.waited) return 'other road';
+        if (z.kind !== 'cross' || !z.yields || o.cleared || o.blocked || car.waited > PATIENCE) continue;
+        // Gap acceptance: is a car with priority about to reach its own gate?
+        const theirGate = this.gate.get(o.route)!;
+        if (o.s > theirGate + 0.5 || this.heldAtLine(o, snap)) continue;
+        if (theirGate - o.s < 25 + o.v * GAP_TIME) return 'other road';
+      }
+      clearUntil = Math.max(clearUntil, z.at[1]);
     }
-    return false;
+    return this.queueRoom(car) >= clearUntil - car.s + car.length ? 'go' : 'no room';
   }
 
   /**
-   * Room ahead at merges: cars from the other road that joined the merge's queue before
-   * this car count as being ahead of it in the same lane (zip merging).
+   * Backstop for merges: if the other road's car is unexpectedly still in the merge when
+   * this one gets there (e.g. it slowed down in a jam), wait just before the merge.
    */
-  private mergeRoom(car: Car): number {
-    let room = Infinity;
-    this.leaderV = Infinity;
-    for (const c of this.conflicts.get(car.route)!) {
-      if (c.kind !== 'merge') continue;
-      const order = this.mergeOrder.get(c.key);
-      if (!order?.includes(car.id)) continue;
-      const [m, om] = c.join;
+  private mergeSafety(car: Car): number {
+    let limit = Infinity;
+    for (const z of this.conflicts.get(car.route)!) {
+      if (z.kind !== 'merge' || car.s >= z.at[0]) continue;
+      const leaveAt = z.join[1] + JOIN_MARGIN;
       for (const o of this.cars) {
-        if (o.route !== c.other) continue;
-        const theirs = order.indexOf(o.id);
-        if (theirs < 0 || theirs > order.indexOf(car.id)) continue;
-        const virtual = o.s - om + m; // the other car's position measured along this route
-        // The queue order gives way to reality in two cases, and this car goes first:
-        // - the earlier car is stuck before even reaching the merge (possibly behind
-        //   something that is waiting for this car), so it takes up no merge space;
-        // - this car is moving and already ahead of the earlier car at the merge.
-        // A stuck car never jumps ahead, so the two rules can't keep swapping back and forth.
-        if ((o.blocked && o.s < c.otherAt[0]) || (!car.blocked && virtual < car.s - 1)) {
-          order.splice(order.indexOf(car.id), 1);
-          order.splice(theirs, 0, car.id);
-          continue;
-        }
-        const r = virtual - o.length - MIN_GAP - car.s;
-        if (r < room) [room, this.leaderV] = [r, o.v];
+        if (o.route !== z.other) continue;
+        // Already on the shared exit ahead of this car: exitRoom follows it instead.
+        if (o.s >= z.join[1] && o.s - z.join[1] + z.join[0] > car.s) continue;
+        if (o.s > z.otherAt[0] && o.s - o.length < leaveAt) limit = Math.min(limit, z.at[0] - 1 - car.s);
+      }
+    }
+    return Math.max(0, limit);
+  }
+
+  private claimPassage(car: Car): void {
+    car.cleared = true;
+    for (const z of this.conflicts.get(car.route)!) {
+      if (z.kind === 'merge') continue; // merges are judged on timing, see canEnter
+      if (car.s - car.length > claimEnd(z)) continue;
+      let holders = this.claims.get(z.key);
+      if (!holders) this.claims.set(z.key, (holders = new Set()));
+      holders.add(car);
+    }
+  }
+
+  /**
+   * Room on a shared exit road: cars from the other road that have already merged count
+   * as being in front (measured from where the two roads join).
+   */
+  private exitRoom(car: Car): number {
+    let room = Infinity;
+    for (const z of this.conflicts.get(car.route)!) {
+      if (z.kind !== 'merge') continue;
+      const [j, oj] = z.join;
+      for (const o of this.cars) {
+        if (o.route !== z.other || o.s < oj) continue;
+        const virtual = o.s - oj + j;
+        if (virtual > car.s) room = Math.min(room, virtual - o.length - MIN_GAP - car.s);
       }
     }
     return room;
   }
 
-  /** Is a car from the other road in zone `z`, or within `margin` px of entering it? */
-  private someoneAt(z: Conflict, margin: number): boolean {
-    const [z0, z1] = z.otherAt;
-    return this.cars.some((o) => o.route === z.other && o.s > z0 - margin && o.s - o.length < z1);
-  }
-
   /**
    * Room ahead once the queue in front has closed up: follows the cars ahead in this lane
-   * to the first one that is standing still, or that is heading into a crossing where it
-   * will have to wait, and stacks the moving ones behind it. Infinity if traffic ahead is
-   * flowing freely.
+   * to the first one that is standing (or creeping in a jam beyond the junction) and
+   * stacks the moving ones behind it. Infinity if traffic ahead is flowing freely.
    */
-  private queueRoom(car: Car, snap: SimSnapshot): number {
+  private queueRoom(car: Car): number {
     const chain: Car[] = [];
     let current = car;
-    let front = Infinity; // where the first car that will stop ends up
     for (;;) {
       this.roomAhead(current.route, current.s, current);
       const leader = this.leaderCar;
       if (!leader || chain.includes(leader) || chain.length > 30) return Infinity;
       chain.push(leader);
-      // Standing, or creeping in a jam beyond the junction: the queue ends here for now.
-      // (Cars still at the line setting off on green don't count, or nobody would follow.)
       const beyondJunction = leader.s - leader.length > car.route.stopAt + CLEAR_JUNCTION;
-      if (leader.v < 1 || (leader.v < 20 && beyondJunction)) {
-        front = leader.s;
-        break;
-      }
-      const wait = this.nextWaitingPoint(leader, snap);
-      if (wait !== null) {
-        front = wait;
-        break;
-      }
+      if (leader.v < 1 || (leader.v < 20 && beyondJunction)) break;
       current = leader;
     }
-    let rear = front - chain[chain.length - 1].length;
+    let rear = chain[chain.length - 1].s - chain[chain.length - 1].length;
     for (let i = chain.length - 2; i >= 0; i--) rear -= MIN_GAP + chain[i].length;
     return rear - MIN_GAP - car.s;
-  }
-
-  /**
-   * Where a moving car may have to stop for a crossing just ahead of it, if anywhere: it
-   * must give way there and hasn't claimed it yet, or the crossing is taken.
-   */
-  private nextWaitingPoint(car: Car, snap: SimSnapshot): number | null {
-    let nearest: number | null = null;
-    for (const z of this.conflicts.get(car.route)!) {
-      if (z.kind !== 'cross' || z.at[0] <= car.s || z.at[0] - car.s > 250) continue;
-      if (nearest !== null && z.at[0] - 1 >= nearest) continue;
-      const claim = this.reservations.get(z.key);
-      if (claim?.car === car.id) continue; // it has the right to go
-      if (z.yields || claim || this.mustWaitAt(z, snap) || this.someoneAt(z, 60)) nearest = z.at[0] - 1;
-    }
-    return nearest;
   }
 
   /**
@@ -702,7 +680,6 @@ export class Traffic {
    */
   private roomAhead(route: Route, s: number, self: Car | null): number {
     let room = Infinity;
-    this.leaderV = Infinity;
     this.leaderCar = null;
     const shared = this.shared.get(route)!;
     for (const other of this.cars) {
@@ -715,8 +692,13 @@ export class Traffic {
       if (!ahead) continue;
       const rear = other.s - other.length;
       if (!sameRoute && (rear > prefix || s > prefix)) continue;
-      if (rear - MIN_GAP - s < room) [room, this.leaderV, this.leaderCar] = [rear - MIN_GAP - s, other.v, other];
+      if (rear - MIN_GAP - s < room) [room, this.leaderCar] = [rear - MIN_GAP - s, other];
     }
     return room;
   }
+}
+
+/** Where a car's claim on a zone ends: the end of a crossing, or just past a merge's join. */
+function claimEnd(z: Conflict): number {
+  return z.kind === 'cross' ? z.at[1] : z.join[0] + JOIN_MARGIN;
 }
