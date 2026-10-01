@@ -24,11 +24,10 @@ body {
   padding: 16px;
 }
 
-/* The stage is the 900x500 JavaFX window, scaled to fit. */
+/* The stage is the 900x500 JavaFX window, scaled to fill the browser window. */
 .stage {
   position: relative;
-  width: 100%;
-  max-width: 1350px;
+  width: min(100%, (100dvh - 32px) * 900 / 500);
   aspect-ratio: 900 / 500;
   overflow: hidden;
   container-type: inline-size;
@@ -170,6 +169,58 @@ body {
 .lang-switch button:focus-visible {
   outline: 2px solid #8ab4ff;
   outline-offset: 1px;
+}
+
+/* Larger screens: no frame around the map, it fills the window edge to edge. */
+@media (min-width: 721px) {
+  #app {
+    padding: 0;
+  }
+  .stage {
+    width: min(100vw, 100dvh * 900 / 500);
+  }
+}
+
+.fullscreen-toggle {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(16, 20, 26, 0.72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  color: #dfe6ee;
+  cursor: pointer;
+}
+.fullscreen-toggle:hover {
+  background: rgba(40, 48, 58, 0.85);
+}
+.fullscreen-toggle:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
+}
+.fullscreen-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fullscreen-toggle .exit,
+.fullscreen-toggle.is-on .enter {
+  display: none;
+}
+.fullscreen-toggle.is-on .exit {
+  display: inline;
 }
 
 /* ---- Signals ---- */

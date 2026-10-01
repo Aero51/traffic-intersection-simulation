@@ -14,6 +14,8 @@ const STRINGS = {
   },
   'scene.label': { hr: 'Raskrižje sa semaforima', en: 'Intersection with traffic lights' },
   'lang.label': { hr: 'Jezik', en: 'Language' },
+  'fullscreen.enter': { hr: 'Cijeli zaslon (F)', en: 'Full screen (F)' },
+  'fullscreen.exit': { hr: 'Izađi iz cijelog zaslona (F)', en: 'Exit full screen (F)' },
 
   'tipkalo': { hr: 'Tipkalo', en: 'Walk' },
   'tipkalo.wait': { hr: 'Čekajte…', en: 'Wait…' },

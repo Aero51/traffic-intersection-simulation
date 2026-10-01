@@ -135,9 +135,42 @@ const menu = createMenu(main, {
 vehicleSignals.forEach((s, i) => s.root.addEventListener('click', () => menu.select(i)));
 
 createLanguageSwitch(main);
+createFullscreenToggle(main);
 applyLanguage();
 renderTipkalo();
 render(signals, sim.snapshot());
+
+/** Button (and the F key) that puts the whole page into browser fullscreen. */
+function createFullscreenToggle(parent: HTMLElement): void {
+  if (!document.fullscreenEnabled) return; // e.g. iPhone Safari
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'fullscreen-toggle';
+  button.innerHTML =
+    '<svg viewBox="0 0 16 16" aria-hidden="true"><path class="enter" d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"/>' +
+    '<path class="exit" d="M6 1v5H1M15 6h-5V1M10 15v-5h5M1 10h5v5"/></svg>';
+  parent.appendChild(button);
+
+  const toggle = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
+  const sync = () => {
+    const on = document.fullscreenElement !== null;
+    button.classList.toggle('is-on', on);
+    const label = t(on ? 'fullscreen.exit' : 'fullscreen.enter');
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  };
+  button.addEventListener('click', toggle);
+  document.addEventListener('keydown', (e) => {
+    const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+    if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey && !typing) toggle();
+  });
+  document.addEventListener('fullscreenchange', sync);
+  onLangChange(sync);
+  sync();
+}
 
 let last = 0;
 function frame(now: number): void {
