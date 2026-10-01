@@ -1,0 +1,9 @@
+# Netlify reads this file from the repository root. The web app lives in `web/`
+# (next to the original JavaFX project), so build from there.
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "dist" # relative to base, i.e. web/dist
+
+[build.environment]
+  NODE_VERSION = "22"
