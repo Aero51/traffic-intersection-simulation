@@ -3,6 +3,19 @@ import { Traffic, pose, type Car } from './traffic';
 import { Simulation } from './sim';
 import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
 import { SCENE_HEIGHT, SCENE_WIDTH } from './layout';
+import { CROSSINGS } from './pedestrians';
+
+/** Is this car's centre on one of the striped crosswalks? */
+function onCrosswalk(car: Car): boolean {
+  const { x, y } = centre(car);
+  return CROSSINGS.some(({ a, b, halfWidth }) => {
+    const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+    const len2 = dx * dx + dy * dy;
+    const t = ((x - a[0]) * dx + (y - a[1]) * dy) / len2;
+    if (t < 0 || t > 1) return false;
+    return Math.abs((x - a[0]) * dy - (y - a[1]) * dx) / Math.sqrt(len2) < halfWidth;
+  });
+}
 
 /** Centre of a car's body on the map. */
 function centre(car: Car) {
@@ -80,6 +93,8 @@ describe('junction conflicts', () => {
     const stoppedFor = new Map<number, number>();
     let longestStop = 0;
     let example = '';
+    let crosswalkStops = 0;
+    const onCrosswalkFor = new Map<number, number>();
     for (let i = 0; i < (minutes * 60) / dt; i++) {
       const before = sim.snapshot();
       // Automatic mode: the signal cycle only runs while someone waits (see main.ts).
@@ -90,6 +105,11 @@ describe('junction conflicts', () => {
         const stopped = c.v < 1 ? (stoppedFor.get(c.id) ?? 0) + dt : 0;
         stoppedFor.set(c.id, stopped);
         longestStop = Math.max(longestStop, stopped);
+        // Standing on a crosswalk for more than a moment means it drove into a full junction.
+        const before = onCrosswalkFor.get(c.id) ?? 0;
+        const there = c.v < 1 && onCrosswalk(c) ? before + dt : 0;
+        onCrosswalkFor.set(c.id, there);
+        if (there > 2 && before <= 2) crosswalkStops++;
       }
       const visible = traffic.cars.filter(onScreen);
       for (let a = 0; a < visible.length && !example; a++) {
@@ -103,6 +123,10 @@ describe('junction conflicts', () => {
       }
     }
     expect(example).toBe('');
+    // Cars wait at the stop line when the road beyond the junction is backed up. At this
+    // (over-)saturated load a queue still occasionally spills onto a crosswalk, mostly in
+    // flashing mode where nothing meters the traffic; before this rule it was 4.5-7/min.
+    expect(crosswalkStops / minutes).toBeLessThan(mode === 'flashing' ? 6 : 2.5);
     expect(longestStop).toBeLessThan(120); // no gridlock: everyone gets going again
     expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(30); // cars per minute through
   }, 120_000);

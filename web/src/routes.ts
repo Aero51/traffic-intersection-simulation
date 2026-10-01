@@ -8,8 +8,14 @@ import type { StringKey } from './i18n';
 /** Cars enter and leave this far beyond the picture edge instead of popping in. */
 const OFF_SCREEN = 90;
 
-/** Where signal 1's stop line was drawn in the original (`linija`, never made visible). */
-const MAIN_STOP_LINE: Point = [529, 384];
+/**
+ * Stop points on the white stop bar painted on the photo, just before the crosswalk
+ * (from about (500, 330) to (470, 385) on the main road; x = 512 on the side road).
+ * The original's invisible `linija` at (529, 384) was a car length further back.
+ */
+const STOP_BAR_NW_RIGHT: Point = [497, 348];
+const STOP_BAR_NW_LEFT: Point = [481, 378];
+const STOP_BAR_SIDE: Point = [517, 86];
 
 export const ROUTE_DEFS: RouteDef[] = [
   // North-west bound main road (from bottom right).
@@ -19,7 +25,7 @@ export const ROUTE_DEFS: RouteDef[] = [
     lane: 'nw-right',
     weight: 3,
     control: { signal: 0 },
-    stopNear: MAIN_STOP_LINE,
+    stopNear: STOP_BAR_NW_RIGHT,
     path: [[703, 466], ['L', 542, 375], ['L', 396, 287], ['L', 275, 204], ['L', 159, 118], ['L', 18, 4]],
   },
   {
@@ -29,7 +35,7 @@ export const ROUTE_DEFS: RouteDef[] = [
     lane: 'nw-right',
     weight: 2,
     control: { signal: 0, arrow: 0 },
-    stopNear: MAIN_STOP_LINE,
+    stopNear: STOP_BAR_NW_RIGHT,
     path: [[703, 466], ['L', 542, 375], ['L', 396, 287], ['C', 362, 266, 392, 148, 451, 137], ['L', 637, 101], ['L', 891, 47]],
   },
   {
@@ -38,7 +44,7 @@ export const ROUTE_DEFS: RouteDef[] = [
     lane: 'nw-left',
     weight: 1,
     control: { signal: 1 },
-    stopNear: MAIN_STOP_LINE,
+    stopNear: STOP_BAR_NW_LEFT,
     path: [[653, 470], ['L', 446, 357], ['L', 316, 275], ['L', 182, 177], ['L', 1, 39]],
   },
   // South-east bound main road (from top left).
@@ -78,7 +84,7 @@ export const ROUTE_DEFS: RouteDef[] = [
     lane: 'side',
     weight: 2,
     control: { signal: 4, arrow: 2 },
-    stopNear: [530, 84],
+    stopNear: STOP_BAR_SIDE,
     path: [[892, 14], ['L', 543, 82], ['L', 377, 98], ['L', 288, 93], ['L', 169, 74], ['L', 58, 35], ['L', 14, 0]],
   },
   {
@@ -88,7 +94,7 @@ export const ROUTE_DEFS: RouteDef[] = [
     lane: 'side',
     weight: 1,
     control: { signal: 4 },
-    stopNear: [530, 84],
+    stopNear: STOP_BAR_SIDE,
     path: [[892, 14], ['L', 543, 82], ['L', 449, 91], ['C', 389, 97, 264, 272, 330, 317], ['L', 395, 361], ['L', 519, 436], ['L', 582, 471]],
   },
 ];

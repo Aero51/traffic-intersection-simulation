@@ -116,6 +116,11 @@ const ZONE_PADDING = 12;
 const TOUCH_DISTANCE = 20;
 /** Merging roads approach at an angle; start zip merging while they're still this far apart. */
 const MERGE_DISTANCE = 45;
+/**
+ * Past the stop line a car needs this much room beyond its own length (the crosswalk and
+ * junction box) before it may cross the line, so it never stops on the crosswalk.
+ */
+const CLEAR_JUNCTION = 45;
 /** Longest time step the car model takes at once, so fast cars can't skip past each other. */
 const MAX_STEP = 1 / 60;
 /** A car yields if a car with priority would reach the crossing within this many seconds. */
@@ -337,6 +342,10 @@ export class Traffic {
   readonly conflicts = new Map<Route, Conflict[]>();
   /** Per merge: car ids in the order they reached it (first come, first served). */
   private mergeOrder = new Map<string, number[]>();
+  /** Speed of the car that limited the last roomAhead / mergeRoom result. */
+  private leaderV = Infinity;
+  /** The car that limited the last roomAhead result. */
+  private leaderCar: Car | null = null;
   /** Crossing zones claimed by a car that is about to drive through them. */
   private reservations = new Map<string, { car: number; start: number; end: number }>();
   private spawnTimers = new Map<string, number>();
@@ -517,8 +526,20 @@ export class Traffic {
 
   /** Distance this car may still travel before it has to be stopped. */
   private limitFor(car: Car, snap: SimSnapshot): number {
-    let limit = Math.min(this.roomAhead(car.route, car.s, car), this.mergeRoom(car));
-    if (this.heldAtLine(car, snap)) limit = Math.min(limit, Math.max(0, car.route.stopAt - car.s));
+    const room = this.roomAhead(car.route, car.s, car);
+    const merge = this.mergeRoom(car);
+    const mergeV = this.leaderV;
+    let limit = Math.min(room, merge);
+    const toLine = car.route.stopAt - car.s;
+    if (this.heldAtLine(car, snap)) limit = Math.min(limit, Math.max(0, toLine));
+
+    // Don't drive into the junction when the road beyond is backed up: wait at the line
+    // rather than end up stuck on the crosswalk. Judge by where the queue ahead will end
+    // up once it stops, not by the gap right now.
+    if (toLine >= -0.5 && toLine < 150) {
+      const ahead = Math.min(this.queueRoom(car, snap), merge < room || mergeV < 1 ? merge : Infinity);
+      if (ahead - toLine < car.length + CLEAR_JUNCTION) limit = Math.min(limit, Math.max(0, toLine));
+    }
 
     const zones = this.conflicts.get(car.route)!.filter((c) => c.kind === 'cross').sort((a, b) => a.at[0] - b.at[0]);
     for (let i = 0; i < zones.length; i++) {
@@ -590,6 +611,7 @@ export class Traffic {
    */
   private mergeRoom(car: Car): number {
     let room = Infinity;
+    this.leaderV = Infinity;
     for (const c of this.conflicts.get(car.route)!) {
       if (c.kind !== 'merge') continue;
       const order = this.mergeOrder.get(c.key);
@@ -610,10 +632,67 @@ export class Traffic {
           order.splice(theirs, 0, car.id);
           continue;
         }
-        room = Math.min(room, virtual - o.length - MIN_GAP - car.s);
+        const r = virtual - o.length - MIN_GAP - car.s;
+        if (r < room) [room, this.leaderV] = [r, o.v];
       }
     }
     return room;
+  }
+
+  /** Is a car from the other road in zone `z`, or within `margin` px of entering it? */
+  private someoneAt(z: Conflict, margin: number): boolean {
+    const [z0, z1] = z.otherAt;
+    return this.cars.some((o) => o.route === z.other && o.s > z0 - margin && o.s - o.length < z1);
+  }
+
+  /**
+   * Room ahead once the queue in front has closed up: follows the cars ahead in this lane
+   * to the first one that is standing still, or that is heading into a crossing where it
+   * will have to wait, and stacks the moving ones behind it. Infinity if traffic ahead is
+   * flowing freely.
+   */
+  private queueRoom(car: Car, snap: SimSnapshot): number {
+    const chain: Car[] = [];
+    let current = car;
+    let front = Infinity; // where the first car that will stop ends up
+    for (;;) {
+      this.roomAhead(current.route, current.s, current);
+      const leader = this.leaderCar;
+      if (!leader || chain.includes(leader) || chain.length > 30) return Infinity;
+      chain.push(leader);
+      // Standing, or creeping in a jam beyond the junction: the queue ends here for now.
+      // (Cars still at the line setting off on green don't count, or nobody would follow.)
+      const beyondJunction = leader.s - leader.length > car.route.stopAt + CLEAR_JUNCTION;
+      if (leader.v < 1 || (leader.v < 20 && beyondJunction)) {
+        front = leader.s;
+        break;
+      }
+      const wait = this.nextWaitingPoint(leader, snap);
+      if (wait !== null) {
+        front = wait;
+        break;
+      }
+      current = leader;
+    }
+    let rear = front - chain[chain.length - 1].length;
+    for (let i = chain.length - 2; i >= 0; i--) rear -= MIN_GAP + chain[i].length;
+    return rear - MIN_GAP - car.s;
+  }
+
+  /**
+   * Where a moving car may have to stop for a crossing just ahead of it, if anywhere: it
+   * must give way there and hasn't claimed it yet, or the crossing is taken.
+   */
+  private nextWaitingPoint(car: Car, snap: SimSnapshot): number | null {
+    let nearest: number | null = null;
+    for (const z of this.conflicts.get(car.route)!) {
+      if (z.kind !== 'cross' || z.at[0] <= car.s || z.at[0] - car.s > 250) continue;
+      if (nearest !== null && z.at[0] - 1 >= nearest) continue;
+      const claim = this.reservations.get(z.key);
+      if (claim?.car === car.id) continue; // it has the right to go
+      if (z.yields || claim || this.mustWaitAt(z, snap) || this.someoneAt(z, 60)) nearest = z.at[0] - 1;
+    }
+    return nearest;
   }
 
   /**
@@ -623,6 +702,8 @@ export class Traffic {
    */
   private roomAhead(route: Route, s: number, self: Car | null): number {
     let room = Infinity;
+    this.leaderV = Infinity;
+    this.leaderCar = null;
     const shared = this.shared.get(route)!;
     for (const other of this.cars) {
       if (other === self) continue;
@@ -634,7 +715,7 @@ export class Traffic {
       if (!ahead) continue;
       const rear = other.s - other.length;
       if (!sameRoute && (rear > prefix || s > prefix)) continue;
-      room = Math.min(room, rear - MIN_GAP - s);
+      if (rear - MIN_GAP - s < room) [room, this.leaderV, this.leaderCar] = [rear - MIN_GAP - s, other.v, other];
     }
     return room;
   }
