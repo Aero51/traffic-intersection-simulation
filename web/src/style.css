@@ -1,0 +1,89 @@
+:root {
+  --bg: #000;
+  --fg: #eee;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+}
+
+#app {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 16px;
+}
+
+.scene {
+  display: block;
+  width: 100%;
+  max-width: 1350px;
+  height: auto;
+  aspect-ratio: 900 / 500;
+  user-select: none;
+}
+
+/* ---- Signals ---- */
+
+.lamp .on {
+  visibility: hidden;
+}
+.lamp.is-on .on {
+  visibility: visible;
+}
+.lamp.is-on .off {
+  visibility: hidden;
+}
+
+/* TrafficLightSkin toggles the "on" shapes every 500 ms while blinking. */
+.lamp.is-blinking .on {
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  0% {
+    visibility: visible;
+  }
+  50% {
+    visibility: hidden;
+  }
+}
+
+.signal-vehicle {
+  cursor: pointer;
+}
+.signal-body {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 150ms ease-out;
+}
+.signal.is-selected .signal-body {
+  transform: scale(2);
+}
+
+/* ---- Tipkalo (styled after the JavaFX 2 Caspian button) ---- */
+
+.tipkalo {
+  font: 12px system-ui, sans-serif;
+  padding: 4px 8px;
+  border: 1px solid #8a8a8a;
+  border-radius: 5px;
+  background: linear-gradient(#fdfdfd, #d6d6d6);
+  color: #222;
+  cursor: pointer;
+}
+.tipkalo:hover {
+  background: linear-gradient(#ffffff, #e2e8f0);
+}
+.tipkalo:active {
+  background: linear-gradient(#c8c8c8, #e8e8e8);
+}
