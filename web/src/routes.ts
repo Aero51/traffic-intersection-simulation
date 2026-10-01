@@ -1,0 +1,87 @@
+// Car routes. Based on GlavnaKlasa.putGore(), which strung eight routes into one Path for
+// a single red square. The two turning arcs were replaced with cubic curves that stay on
+// the road, and each route is tied to the signal (and turn arrow) next to it.
+
+import type { Point, RouteDef } from './traffic';
+
+/** Where signal 1's stop line was drawn in the original (`linija`, never made visible). */
+const MAIN_STOP_LINE: Point = [529, 384];
+
+export const ROUTE_DEFS: RouteDef[] = [
+  // North-west bound main road (from bottom right).
+  {
+    id: 'nw-straight',
+    lane: 'nw-right',
+    weight: 3,
+    control: { signal: 0 },
+    stopNear: MAIN_STOP_LINE,
+    path: [[703, 466], ['L', 542, 375], ['L', 396, 287], ['L', 275, 204], ['L', 159, 118], ['L', 18, 4]],
+  },
+  {
+    id: 'nw-right-turn',
+    lane: 'nw-right',
+    weight: 2,
+    control: { signal: 0, arrow: 0 },
+    stopNear: MAIN_STOP_LINE,
+    path: [[703, 466], ['L', 542, 375], ['L', 396, 287], ['C', 362, 266, 392, 148, 451, 137], ['L', 637, 101], ['L', 891, 47]],
+  },
+  {
+    id: 'nw-left-lane',
+    lane: 'nw-left',
+    weight: 1,
+    control: { signal: 1 },
+    stopNear: MAIN_STOP_LINE,
+    path: [[653, 470], ['L', 446, 357], ['L', 316, 275], ['L', 182, 177], ['L', 1, 39]],
+  },
+  // South-east bound main road (from top left).
+  {
+    id: 'se-straight',
+    lane: 'se-left',
+    weight: 3,
+    control: { signal: 3 },
+    stopNear: [99, 150],
+    path: [[2, 73], ['L', 64, 128], ['L', 279, 283], ['L', 395, 361], ['L', 519, 436], ['L', 582, 471]],
+  },
+  {
+    id: 'se-left-turn',
+    lane: 'se-left',
+    weight: 1,
+    control: { signal: 3, arrow: 1 },
+    stopNear: [99, 150],
+    path: [[2, 73], ['L', 64, 128], ['C', 110, 169, 300, 150, 441, 136], ['L', 637, 101], ['L', 891, 47]],
+  },
+  {
+    id: 'se-right-lane',
+    lane: 'se-right',
+    weight: 1,
+    control: { signal: 2 },
+    stopNear: [48, 190],
+    path: [[0, 117], ['L', 53, 157], ['L', 279, 324], ['L', 453, 436], ['L', 498, 471]],
+  },
+  // Side road, coming in from the east.
+  {
+    id: 'side-right-turn',
+    lane: 'side',
+    weight: 2,
+    control: { signal: 4, arrow: 2 },
+    stopNear: [530, 84],
+    path: [[892, 14], ['L', 543, 82], ['L', 377, 98], ['L', 288, 93], ['L', 169, 74], ['L', 58, 35], ['L', 14, 0]],
+  },
+  {
+    id: 'side-left-turn',
+    lane: 'side',
+    weight: 1,
+    control: { signal: 4 },
+    stopNear: [530, 84],
+    path: [[892, 14], ['L', 543, 82], ['L', 449, 91], ['C', 389, 97, 264, 272, 330, 317], ['L', 395, 361], ['L', 519, 436], ['L', 582, 471]],
+  },
+];
+
+/** Seconds between cars entering each lane: [min, max]. */
+export const LANE_SPAWN: Record<string, [number, number]> = {
+  'nw-right': [2.5, 5.5],
+  'nw-left': [4, 8],
+  'se-left': [2.5, 5.5],
+  'se-right': [4, 8],
+  side: [4, 8],
+};
