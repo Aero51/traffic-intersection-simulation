@@ -1,6 +1,7 @@
 import './style.css';
 import { SCENE_HEIGHT, SCENE_WIDTH, SIGNALS, TIPKALO } from './layout';
 import { Signal, createSignalDefs } from './signals';
+import { Simulation, type SimSnapshot } from './sim';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -37,12 +38,32 @@ function buildScene(container: HTMLElement): { svg: SVGSVGElement; signals: Sign
   return { svg, signals };
 }
 
-const app = document.getElementById('app')!;
-const { signals } = buildScene(app);
-
-// Static preview of the state right after start-up: vehicle signals 1-4 green, 5 red,
-// pedestrians red. The simulation clock replaces this in the next step.
-for (const s of signals) {
-  if (s.placement.kind === 'vehicle') s.set(s.id === 5 ? { red: { on: true } } : { green: { on: true } });
-  if (s.placement.kind === 'pedestrian') s.set({ red: { on: true } });
+function render(signals: Signal[], snap: SimSnapshot): void {
+  // Ids 1-5 vehicles, 6-9 pedestrians, 10-12 turn arrows (see layout.ts).
+  const lights = [...snap.vehicles, ...snap.pedestrians, ...snap.turns];
+  signals.forEach((signal, i) => {
+    const l = lights[i];
+    signal.set({
+      red: { on: l.red },
+      yellow: { on: l.yellow, blinking: l.yellowBlinking },
+      green: { on: l.green },
+    });
+  });
 }
+
+const app = document.getElementById('app')!;
+const { svg, signals } = buildScene(app);
+const sim = new Simulation();
+
+svg.querySelector('.tipkalo')!.addEventListener('click', () => sim.requestPedestrians());
+
+let last = performance.now();
+function frame(now: number): void {
+  // Clamp so a backgrounded tab doesn't fast-forward through many cycles at once.
+  sim.advance(Math.min((now - last) / 1000, 0.25));
+  last = now;
+  render(signals, sim.snapshot());
+  requestAnimationFrame(frame);
+}
+render(signals, sim.snapshot());
+requestAnimationFrame(frame);
