@@ -1,0 +1,9 @@
+# NetBeans / JavaFX build output
+/build/
+/dist/
+/nbproject/private/
+
+# Web port
+node_modules/
+web/dist/
+.netlify/
