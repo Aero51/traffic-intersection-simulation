@@ -49,39 +49,61 @@ describe('junction conflicts', () => {
     expect(crossings.filter((c) => c.other.def.id.startsWith('nw-')).every((c) => c.yields)).toBe(true);
   });
 
-  it.each([1, 2, 3])('heavy traffic for 10 minutes: no cars overlap and traffic keeps moving (seed %i)', (seedStart) => {
-    let seed = seedStart;
+  it('sees every conflict the same way from both routes', () => {
+    const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS);
+    for (const [route, list] of traffic.conflicts) {
+      for (const c of list) {
+        const twin = traffic.conflicts.get(c.other)!.find((d) => d.other === route && d.key === c.key);
+        expect(twin, `${route.def.id} ${c.kind} ${c.other.def.id}`).toBeDefined();
+        expect(twin!.kind).toBe(c.kind);
+        if (c.kind === 'cross') expect(c.yields && twin!.yields).toBe(false); // exactly one gives way
+      }
+    }
+  });
+
+  // Normal, "Policajac" (all flashing) and "Automatski režim"; small frames and the
+  // browser's largest (0.1 s, e.g. after a hiccup or in a background tab).
+  it.each([
+    { mode: 'normal', dt: 1 / 30, seed: 1, minutes: 10 },
+    { mode: 'normal', dt: 0.1, seed: 4, minutes: 6 },
+    { mode: 'flashing', dt: 1 / 60, seed: 2, minutes: 4 },
+    { mode: 'auto', dt: 0.1, seed: 3, minutes: 6 },
+  ] as const)('heavy traffic, $mode mode, dt $dt: no cars overlap and nobody is stuck', ({ mode, dt, seed: seedStart, minutes }) => {
+    let seed = seedStart * 7919;
     const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const sim = new Simulation();
+    if (mode === 'flashing') sim.setMode('flashing');
     const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
     for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 15);
 
     const seen = new Set<number>();
-    let collisions = 0;
+    const stoppedFor = new Map<number, number>();
+    let longestStop = 0;
     let example = '';
-    let movingAtEnd = 0;
-    const dt = 1 / 30;
-    for (let i = 0; i < 30 * 600; i++) {
-      sim.advance(dt);
+    for (let i = 0; i < (minutes * 60) / dt; i++) {
+      const before = sim.snapshot();
+      // Automatic mode: the signal cycle only runs while someone waits (see main.ts).
+      if (mode !== 'auto' || before.vehicles.some((v) => v.yellow) || traffic.waitingAtRed(before)) sim.advance(dt);
       traffic.step(dt, sim.snapshot());
-      for (const c of traffic.cars) seen.add(c.id);
-      if (i % 3) continue;
+      for (const c of traffic.cars) {
+        seen.add(c.id);
+        const stopped = c.v < 1 ? (stoppedFor.get(c.id) ?? 0) + dt : 0;
+        stoppedFor.set(c.id, stopped);
+        longestStop = Math.max(longestStop, stopped);
+      }
       const visible = traffic.cars.filter(onScreen);
-      for (let a = 0; a < visible.length; a++) {
+      for (let a = 0; a < visible.length && !example; a++) {
         for (let b = a + 1; b < visible.length; b++) {
           const [p, q] = [visible[a], visible[b]];
-          if (p.route.def.lane === q.route.def.lane && p.route === q.route) continue; // covered by following tests
           if (overlap(p, q)) {
-            collisions++;
-            example ||= `t=${sim.time.toFixed(1)} ${p.route.def.id}@${p.s.toFixed(0)} vs ${q.route.def.id}@${q.s.toFixed(0)}`;
+            example = `t=${sim.time.toFixed(1)} ${p.route.def.id}@${p.s.toFixed(0)} vs ${q.route.def.id}@${q.s.toFixed(0)}`;
+            break;
           }
         }
       }
-      if (i > 30 * 590) movingAtEnd = Math.max(movingAtEnd, traffic.cars.filter((c) => c.v > 5).length);
     }
     expect(example).toBe('');
-    expect(collisions).toBe(0);
-    expect(seen.size - traffic.cars.length).toBeGreaterThan(300); // cars got through
-    expect(movingAtEnd).toBeGreaterThan(0); // no gridlock
-  });
+    expect(longestStop).toBeLessThan(120); // no gridlock: everyone gets going again
+    expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(30); // cars per minute through
+  }, 120_000);
 });

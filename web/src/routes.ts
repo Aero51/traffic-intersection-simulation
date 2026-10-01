@@ -3,6 +3,7 @@
 // the road, and each route is tied to the signal (and turn arrow) next to it.
 
 import type { Point, RouteDef, TrafficGroup } from './traffic';
+import type { StringKey } from './i18n';
 
 /** Cars enter and leave this far beyond the picture edge instead of popping in. */
 const OFF_SCREEN = 90;
@@ -94,8 +95,8 @@ export const ROUTE_DEFS: RouteDef[] = [
 
 /** The MVC version's sliders: cars arriving from the east, north and west, 0-15 each. */
 export interface TrafficSlider extends TrafficGroup {
-  label: string;
-  description: string;
+  label: StringKey;
+  description: StringKey;
   initial: number;
 }
 
@@ -104,22 +105,22 @@ export const MAX_CARS = 15;
 export const TRAFFIC_GROUPS: TrafficSlider[] = [
   {
     id: 'istok',
-    label: 'Vozila istok',
-    description: 'Vozila s istoka (glavna cesta, dolje desno)',
+    label: 'traffic.istok',
+    description: 'traffic.istok.desc',
     lanes: { 'nw-right': 0.6, 'nw-left': 0.4 },
     initial: 8,
   },
   {
     id: 'sjever',
-    label: 'Vozila sjever',
-    description: 'Vozila sa sjevera (sporedna cesta, gore desno)',
+    label: 'traffic.sjever',
+    description: 'traffic.sjever.desc',
     lanes: { side: 1 },
     initial: 4,
   },
   {
     id: 'zapad',
-    label: 'Vozila zapad',
-    description: 'Vozila sa zapada (glavna cesta, gore lijevo)',
+    label: 'traffic.zapad',
+    description: 'traffic.zapad.desc',
     lanes: { 'se-left': 0.6, 'se-right': 0.4 },
     initial: 8,
   },

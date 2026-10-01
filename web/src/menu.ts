@@ -2,6 +2,7 @@
 
 import { VEHICLE_COUNT, type Mode, type SignalTiming } from './sim';
 import { MAX_CARS, type TrafficSlider } from './routes';
+import { applyLanguage, type StringKey } from './i18n';
 
 export interface MenuCallbacks {
   /** Current timing of a vehicle signal (0-based index), to fill the spinners. */
@@ -24,23 +25,23 @@ export interface Menu {
 const MIN_SECONDS = 1;
 const MAX_SECONDS = 99;
 
-const spinner = (name: string, label: string, disabled = false) => `
+const spinner = (name: string, label: StringKey, disabled = false) => `
   <div class="menu-row">
-    <label for="menu-${name}">${label}</label>
+    <label for="menu-${name}" data-i18n="${label}"></label>
     <div class="spinner${disabled ? ' is-disabled' : ''}">
       <input id="menu-${name}" name="${name}" type="number" inputmode="numeric" ${disabled ? 'disabled' : ''} />
       <div class="spinner-buttons">
-        <button type="button" data-step="1" data-for="${name}" aria-label="${label} više" ${disabled ? 'disabled' : ''}>▲</button>
-        <button type="button" data-step="-1" data-for="${name}" aria-label="${label} manje" ${disabled ? 'disabled' : ''}>▼</button>
+        <button type="button" data-step="1" data-for="${name}" data-i18n-aria="${label} spinner.more" ${disabled ? 'disabled' : ''}>▲</button>
+        <button type="button" data-step="-1" data-for="${name}" data-i18n-aria="${label} spinner.less" ${disabled ? 'disabled' : ''}>▼</button>
       </div>
     </div>
   </div>`;
 
 const slider = (g: TrafficSlider) => `
   <div class="menu-row menu-slider">
-    <label for="traffic-${g.id}" title="${g.description}">${g.label}</label>
+    <label for="traffic-${g.id}" data-i18n="${g.label}" data-i18n-title="${g.description}"></label>
     <input id="traffic-${g.id}" type="range" min="0" max="${MAX_CARS}" step="1" value="${g.initial}"
-      data-group="${g.id}" aria-label="${g.description}, broj vozila" />
+      data-group="${g.id}" data-i18n-aria="${g.description} traffic.count" />
     <output for="traffic-${g.id}">${g.initial}</output>
   </div>`;
 
@@ -48,32 +49,33 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   const root = document.createElement('section');
   root.className = 'menu';
   root.innerHTML = `
-    <button type="button" class="menu-header" aria-expanded="false" aria-controls="menu-body">Izbornik</button>
+    <button type="button" class="menu-header" aria-expanded="false" aria-controls="menu-body" data-i18n="menu"></button>
     <form id="menu-body" class="menu-body">
       <div class="menu-card">
         <div class="menu-row">
-          <label for="menu-mode">Mod rada</label>
+          <label for="menu-mode" data-i18n="menu.mode"></label>
           <select id="menu-mode" name="mode">
-            <option value="normal">Glavni prednost</option>
-            <option value="secondary" disabled>Sporedni prednost</option>
-            <option value="flashing">Policajac</option>
+            <option value="normal" data-i18n="mode.normal"></option>
+            <option value="secondary" disabled data-i18n="mode.secondary"></option>
+            <option value="flashing" data-i18n="mode.flashing"></option>
           </select>
         </div>
         <div class="menu-row">
-          <label for="menu-auto" title="Semafori se izmjenjuju samo kad vozilo čeka na crvenom (induktivna petlja)">Automatski režim</label>
+          <label for="menu-auto" data-i18n="menu.auto" data-i18n-title="menu.auto.hint"></label>
           <input id="menu-auto" name="auto" type="checkbox" class="menu-check" />
         </div>
-        ${spinner('signal', 'Semafor:')}
-        ${spinner('open', 'Vrijeme otvorenosti:')}
-        ${spinner('closed', 'Vrijeme zatvorenosti:', true)}
-        <div class="menu-toolbar"><button type="submit" class="menu-apply">Prihvati</button></div>
+        ${spinner('signal', 'menu.signal')}
+        ${spinner('open', 'menu.open')}
+        ${spinner('closed', 'menu.closed', true)}
+        <div class="menu-toolbar"><button type="submit" class="menu-apply" data-i18n="menu.apply"></button></div>
       </div>
       <fieldset class="menu-card menu-traffic">
-        <legend class="menu-row menu-subhead"><span>Promet</span><span class="menu-unit">broj vozila</span></legend>
+        <legend class="menu-row menu-subhead"><span data-i18n="menu.traffic"></span><span class="menu-unit" data-i18n="menu.traffic.unit"></span></legend>
         ${cb.trafficGroups.map(slider).join('')}
       </fieldset>
     </form>`;
   parent.appendChild(root);
+  applyLanguage(root);
 
   const header = root.querySelector<HTMLButtonElement>('.menu-header')!;
   const form = root.querySelector<HTMLFormElement>('form')!;

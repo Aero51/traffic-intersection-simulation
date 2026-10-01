@@ -9,6 +9,7 @@ import { CarLayer, createCarDefs } from './cars';
 import { Pedestrians } from './pedestrians';
 import { PedestrianLayer } from './pedestrian-layer';
 import { LoopLayer } from './loops';
+import { applyLanguage, createLanguageSwitch, onLangChange, t } from './i18n';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -24,7 +25,7 @@ function buildScene(container: HTMLElement, traffic: Traffic) {
     viewBox: `0 0 ${SCENE_WIDTH} ${SCENE_HEIGHT}`,
     class: 'scene',
     role: 'img',
-    'aria-label': 'Raskrižje sa semaforima',
+    'data-i18n-aria': 'scene.label',
   }, container);
 
   createSignalDefs(svg);
@@ -46,9 +47,9 @@ function buildScene(container: HTMLElement, traffic: Traffic) {
   const carLayer = new CarLayer(svgEl('g', { class: 'cars' }, svg));
 
   const tipkalo = svgEl('foreignObject', {
-    x: String(TIPKALO.x), y: String(TIPKALO.y), width: '70', height: '28', class: 'tipkalo-wrap',
+    x: String(TIPKALO.x), y: String(TIPKALO.y), width: '80', height: '28', class: 'tipkalo-wrap',
   }, svg);
-  tipkalo.innerHTML = '<button xmlns="http://www.w3.org/1999/xhtml" class="tipkalo" type="button">Tipkalo</button>';
+  tipkalo.innerHTML = '<button xmlns="http://www.w3.org/1999/xhtml" class="tipkalo" type="button"></button>';
 
   const layer = svgEl('g', { class: 'signals' }, svg);
   const signals = SIGNALS.map((p) => new Signal(layer, p));
@@ -87,12 +88,11 @@ let automatic = false;
 // Phones get a second, finger-sized Tipkalo below the map.
 const phoneControls = document.createElement('div');
 phoneControls.className = 'phone-controls';
-phoneControls.innerHTML = '<button type="button" class="tipkalo">Tipkalo — zahtjev za pješake</button>';
+phoneControls.innerHTML = '<button type="button" class="tipkalo"></button>';
 main.appendChild(phoneControls);
 
 const tipkala = [svg.querySelector<HTMLButtonElement>('.tipkalo')!, phoneControls.querySelector<HTMLButtonElement>('.tipkalo')!];
-const tipkaloLabels = ['Tipkalo', 'Tipkalo — zahtjev za pješake'];
-let tipkaloPending = false;
+let tipkaloPending: boolean | null = null; // null: not drawn yet
 for (const button of tipkala) {
   button.addEventListener('click', () => {
     sim.requestPedestrians();
@@ -109,9 +109,14 @@ function renderTipkalo(): void {
   tipkaloPending = pending;
   tipkala.forEach((button, i) => {
     button.classList.toggle('is-requested', pending);
-    button.textContent = pending ? (i === 0 ? 'Čekajte…' : 'Zahtjev primljen — čekajte zeleno') : tipkaloLabels[i];
+    const [idle, waiting] = i === 0 ? (['tipkalo', 'tipkalo.wait'] as const) : (['tipkalo.long', 'tipkalo.longWait'] as const);
+    button.textContent = t(pending ? waiting : idle);
   });
 }
+onLangChange(() => {
+  tipkaloPending = null; // redraw the Tipkalo labels in the new language
+  renderTipkalo();
+});
 
 const vehicleSignals = signals.filter((s) => s.placement.kind === 'vehicle');
 const menu = createMenu(main, {
@@ -129,6 +134,9 @@ const menu = createMenu(main, {
 });
 vehicleSignals.forEach((s, i) => s.root.addEventListener('click', () => menu.select(i)));
 
+createLanguageSwitch(main);
+applyLanguage();
+renderTipkalo();
 render(signals, sim.snapshot());
 
 let last = 0;

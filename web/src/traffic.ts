@@ -50,9 +50,13 @@ export interface Route {
  */
 export interface Conflict {
   kind: 'cross' | 'merge';
+  /** Same for both routes' view of one meeting point. */
+  key: string;
   other: Route;
   at: [number, number];
   otherAt: [number, number];
+  /** Merge: where the two roads have actually joined; positions are compared from here. */
+  join: [number, number];
   /** Cars on this route give way to cars on the other at a crossing. */
   yields: boolean;
 }
@@ -93,6 +97,8 @@ export interface Car {
   color: string;
   /** Slowing down or standing still: brake lights on. */
   braking: boolean;
+  /** Standing still because something is in the way (last step). */
+  blocked: boolean;
   indicator: 'left' | 'right' | null;
 }
 
@@ -102,9 +108,16 @@ const ACCEL = 50;
 const BRAKE = 110; // comfortable deceleration, px/s^2
 const LATERAL_ACCEL = 70; // how hard cars corner, px/s^2
 
-/** Paths closer than this (centre to centre) would make cars touch. */
-const CONFLICT_DISTANCE = 20;
-const ZONE_PADDING = 4;
+/** Paths closer than this (centre to centre) make cars touch: widest car plus a margin. */
+const CONFLICT_DISTANCE = 24;
+/** Extra length on each side of a crossing zone, for car corners at an angle. */
+const ZONE_PADDING = 12;
+/** Cars on paths closer than this (centre to centre) touch side by side. */
+const TOUCH_DISTANCE = 20;
+/** Merging roads approach at an angle; start zip merging while they're still this far apart. */
+const MERGE_DISTANCE = 45;
+/** Longest time step the car model takes at once, so fast cars can't skip past each other. */
+const MAX_STEP = 1 / 60;
 /** A car yields if a car with priority would reach the crossing within this many seconds. */
 const GAP_TIME = 2.2;
 /** At a merge, cars this close to the merge point take turns (zip). */
@@ -231,6 +244,10 @@ function priority(route: Route, index: number): number {
 /** Stretches where route `a` comes close to route `b` (see Conflict). */
 function findConflicts(a: Route, b: Route, aYields: boolean): Conflict[] {
   const out: Conflict[] = [];
+  const key = [a.def.id, b.def.id].sort().join('|');
+  // Distance from each (every other) point of `a` to the nearest point of `b`.
+  const dist: number[] = [];
+  const near: number[] = [];
   let run: [number, number, number, number] | null = null;
   const close = (endOfRoute: boolean) => {
     if (!run) return;
@@ -240,12 +257,20 @@ function findConflicts(a: Route, b: Route, aYields: boolean): Conflict[] {
     const [mx, my] = [a.points[2 * mid], a.points[2 * mid + 1]];
     // Routes start and end beyond the picture edge; meetings out there don't matter.
     if (mx < 0 || my < 0 || mx > SCENE_WIDTH || my > SCENE_HEIGHT) return;
-    if (endOfRoute && b1 >= b.length - 4) {
-      out.push({ kind: 'merge', other: b, at: [a0, a.length], otherAt: [b0, b.length], yields: false });
+    // Running off the end of either route means both leave on the same road. (Requiring
+    // both ends can miss by a few px where the routes run off-screen at slightly different
+    // angles, and then one side would treat the merge as a crossing.)
+    if (endOfRoute || b1 >= b.length - 4) {
+      // Compare positions from where cars on the two roads would first touch: on a shallow
+      // angle the stretches before and after that point differ noticeably in length.
+      let k = a0 / 2;
+      while (k < dist.length - 1 && dist[k] > TOUCH_DISTANCE) k++;
+      const join: [number, number] = [2 * k, near[k]];
+      out.push({ kind: 'merge', key, other: b, at: [a0, a.length], otherAt: [b0, b.length], join, yields: false });
     } else {
       const pad = (lo: number, hi: number, len: number): [number, number] =>
         [Math.max(0, lo - ZONE_PADDING), Math.min(len, hi + ZONE_PADDING)];
-      out.push({ kind: 'cross', other: b, at: pad(a0, a1, a.length), otherAt: pad(b0, b1, b.length), yields: aYields });
+      out.push({ kind: 'cross', key, other: b, at: pad(a0, a1, a.length), otherAt: pad(b0, b1, b.length), join: [a0, b0], yields: aYields });
     }
   };
   for (let i = 0; i <= a.length; i += 2) {
@@ -255,11 +280,23 @@ function findConflicts(a: Route, b: Route, aYields: boolean): Conflict[] {
       const d = Math.hypot(a.points[2 * i] - b.points[2 * j], a.points[2 * i + 1] - b.points[2 * j + 1]);
       if (d < best) [best, bi] = [d, j];
     }
-    if (best < CONFLICT_DISTANCE) {
+    dist.push(best);
+    near.push(bi);
+  }
+  dist.forEach((d, k) => {
+    const i = 2 * k;
+    if (d < CONFLICT_DISTANCE) {
+      const bi = near[k];
       run = run ? [run[0], i, Math.min(run[2], bi), Math.max(run[3], bi)] : [i, i, bi, bi];
     } else {
       close(false);
     }
+  });
+  if (run) {
+    // The routes leave together: begin the merge earlier, while the roads still converge.
+    let k = (run as [number, number, number, number])[0] / 2;
+    while (k > 0 && dist[k - 1] < MERGE_DISTANCE) k--;
+    run = [2 * k, run[1], Math.min(run[2], near[k]), run[3]];
   }
   close(true);
   return out;
@@ -298,6 +335,10 @@ export class Traffic {
   private nextId = 1;
   private shared = new Map<Route, Map<Route, number>>();
   readonly conflicts = new Map<Route, Conflict[]>();
+  /** Per merge: car ids in the order they reached it (first come, first served). */
+  private mergeOrder = new Map<string, number[]>();
+  /** Crossing zones claimed by a car that is about to drive through them. */
+  private reservations = new Map<string, { car: number; start: number; end: number }>();
   private spawnTimers = new Map<string, number>();
   private targets = new Map<string, number>();
 
@@ -324,6 +365,19 @@ export class Traffic {
       });
       this.conflicts.set(a, list);
     });
+    // Both routes' views of one crossing share a key, so a reservation covers both.
+    let n = 0;
+    for (const [a, list] of this.conflicts) {
+      for (const c of list) {
+        if (c.kind !== 'cross' || c.key.includes('#')) continue;
+        const twin = this.conflicts.get(c.other)!.find(
+          (d) => d.kind === 'cross' && d.other === a && d.at[0] <= c.otherAt[1] && c.otherAt[0] <= d.at[1] && !d.key.includes('#'),
+        );
+        c.key = `${c.key}#${n}`;
+        if (twin) twin.key = c.key;
+        n++;
+      }
+    }
     // Stagger the first cars so the sides don't all start at once.
     for (const g of groups) this.spawnTimers.set(g.id, this.random() * 2);
   }
@@ -377,6 +431,7 @@ export class Traffic {
       v: Math.min(route.speed[0], Math.sqrt(2 * BRAKE * room)),
       color: CAR_COLORS[Math.floor(this.random() * CAR_COLORS.length)],
       braking: false,
+      blocked: false,
       indicator: null,
     };
     this.cars.push(car);
@@ -385,7 +440,13 @@ export class Traffic {
 
   step(dt: number, snap: SimSnapshot): void {
     if (dt <= 0) return;
+    const steps = Math.ceil(dt / MAX_STEP - 1e-9);
+    for (let i = 0; i < steps; i++) this.substep(dt / steps, snap);
+  }
+
+  private substep(dt: number, snap: SimSnapshot): void {
     this.spawnDue(dt);
+    this.queueAtMerges(snap);
 
     // Free distance for each car, from positions at the start of the step.
     const limits = this.cars.map((car) => this.limitFor(car, snap));
@@ -397,11 +458,37 @@ export class Traffic {
       car.braking = target < car.v - 0.5 || car.v < 1;
       car.v = car.v < target ? Math.min(target, car.v + ACCEL * dt) : Math.max(target, car.v - 3 * BRAKE * dt);
       car.s += Math.min(car.v * dt, Math.max(0, limit));
+      car.blocked = limit < 0.5 && car.v < 1;
 
       const d = car.s - route.divergeAt;
       car.indicator = route.def.turn && d > -INDICATE_BEFORE && d < INDICATE_AFTER ? route.def.turn : null;
     });
     this.cars = this.cars.filter((c) => c.s - c.length < c.route.length);
+    const alive = new Map(this.cars.map((c) => [c.id, c]));
+    for (const [key, order] of this.mergeOrder) this.mergeOrder.set(key, order.filter((id) => alive.has(id)));
+    for (const [key, r] of this.reservations) {
+      const car = alive.get(r.car);
+      if (!car || car.s - car.length > r.end) this.reservations.delete(key);
+    }
+  }
+
+  /**
+   * Cars join a merge's queue once their signal lets them through (or when they get near
+   * the merge). That is before they commit to any crossing on the way, so they never have
+   * to stop inside one to let a merging car go first. The order never changes afterwards,
+   * so two roads can't keep swapping who goes first and end up blocking each other.
+   */
+  private queueAtMerges(snap: SimSnapshot): void {
+    for (const car of this.cars) {
+      for (const c of this.conflicts.get(car.route)!) {
+        if (c.kind !== 'merge') continue;
+        if (car.s < c.at[0] - MERGE_WINDOW && car.s <= car.route.stopAt) continue;
+        if (car.s <= car.route.stopAt && this.heldAtLine(car, snap)) continue;
+        let order = this.mergeOrder.get(c.key);
+        if (!order) this.mergeOrder.set(c.key, (order = []));
+        if (!order.includes(car.id)) order.push(car.id);
+      }
+    }
   }
 
   private spawnDue(dt: number): void {
@@ -430,14 +517,42 @@ export class Traffic {
 
   /** Distance this car may still travel before it has to be stopped. */
   private limitFor(car: Car, snap: SimSnapshot): number {
-    let limit = Math.min(this.roomAhead(car.route, car.s, car), this.mergeRoom(car, snap));
+    let limit = Math.min(this.roomAhead(car.route, car.s, car), this.mergeRoom(car));
     if (this.heldAtLine(car, snap)) limit = Math.min(limit, Math.max(0, car.route.stopAt - car.s));
 
-    for (const c of this.conflicts.get(car.route)!) {
-      if (c.kind !== 'cross' || car.s >= c.at[0]) continue; // already in or past it: keep going
+    const zones = this.conflicts.get(car.route)!.filter((c) => c.kind === 'cross').sort((a, b) => a.at[0] - b.at[0]);
+    for (let i = 0; i < zones.length; i++) {
+      const c = zones[i];
+      if (car.s >= c.at[0]) continue; // already in or past it: keep going
       const toZone = c.at[0] - car.s;
       if (toZone > 160 || toZone >= limit) continue;
-      if (this.mustWaitAt(car, c, snap, limit)) limit = Math.min(limit, Math.max(0, toZone - 1));
+      // Zones close behind each other are one manoeuvre (e.g. a left turn across both
+      // oncoming lanes): only start it if the car can get through all of them.
+      const chain = [c];
+      let end = c.at[1];
+      for (let j = i + 1; j < zones.length && zones[j].at[0] <= end + car.length + 30; j++) {
+        chain.push(zones[j]);
+        end = Math.max(end, zones[j].at[1]);
+      }
+      const mine = (z: Conflict) => this.reservations.get(z.key)?.car === car.id;
+      const taken = (z: Conflict) => !mine(z) && this.reservations.has(z.key);
+      const committed = chain.every(mine);
+      if (
+        !committed &&
+        (limit < end - car.s + car.length || chain.some((z) => taken(z) || this.mustWaitAt(z, snap)))
+      ) {
+        limit = Math.min(limit, Math.max(0, toZone - 1));
+        continue;
+      }
+      // Going: once close enough that it's about to enter, claim every zone of the manoeuvre.
+      if (toZone <= (car.v * car.v) / (2 * BRAKE) + 12) {
+        for (const z of chain) this.reservations.set(z.key, { car: car.id, start: z.at[0], end: z.at[1] });
+      }
+    }
+    // Something else now holds this car back before a zone it claimed: let the claim go so
+    // it doesn't block the crossing while it waits.
+    for (const [key, r] of this.reservations) {
+      if (r.car === car.id && car.s < r.start && r.start - car.s > limit + 0.5) this.reservations.delete(key);
     }
     return limit;
   }
@@ -452,17 +567,16 @@ export class Traffic {
   }
 
   /**
-   * Whether a car must wait before crossing zone `c`: another car is in it, a car with
-   * priority is about to reach it, or there is no room to get clear of it on the far side
-   * (so it doesn't block the junction).
+   * Whether a car must wait before crossing zone `c`: another car is in it, or a car with
+   * priority is about to reach it. (Room to get clear on the far side, so the junction
+   * isn't blocked, is checked by the caller.)
    */
-  private mustWaitAt(car: Car, c: Conflict, snap: SimSnapshot, room: number): boolean {
-    if (room < c.at[1] - car.s + car.length) return true;
+  private mustWaitAt(c: Conflict, snap: SimSnapshot): boolean {
     const [z0, z1] = c.otherAt;
     for (const o of this.cars) {
       if (o.route !== c.other) continue;
       if (o.s > z0 && o.s - o.length < z1) return true; // occupied
-      if (!c.yields || o.s > z0) continue;
+      if (!c.yields || o.s > z0 || o.blocked) continue; // a stuck car isn't coming
       // Will a car with priority get there first? Not if its signal is holding it back.
       if (o.route.stopAt < z0 && o.route.stopAt >= o.s - 0.5 && this.heldAtLine(o, snap)) continue;
       if (z0 - o.s < 25 + o.v * GAP_TIME) return true;
@@ -471,20 +585,31 @@ export class Traffic {
   }
 
   /**
-   * Room ahead at merges: cars from the other road that are past the merge, or closer to
-   * it than this car, count as being ahead in the same lane (zip merging).
+   * Room ahead at merges: cars from the other road that joined the merge's queue before
+   * this car count as being ahead of it in the same lane (zip merging).
    */
-  private mergeRoom(car: Car, snap: SimSnapshot): number {
+  private mergeRoom(car: Car): number {
     let room = Infinity;
     for (const c of this.conflicts.get(car.route)!) {
       if (c.kind !== 'merge') continue;
-      const [m, om] = [c.at[0], c.otherAt[0]];
+      const order = this.mergeOrder.get(c.key);
+      if (!order?.includes(car.id)) continue;
+      const [m, om] = c.join;
       for (const o of this.cars) {
-        if (o.route !== c.other || o.s < om - MERGE_WINDOW) continue;
-        // A car waiting at its own red light before the merge isn't coming yet.
-        if (o.s <= om && o.route.stopAt <= om && o.route.stopAt >= o.s - 0.5 && this.heldAtLine(o, snap)) continue;
+        if (o.route !== c.other) continue;
+        const theirs = order.indexOf(o.id);
+        if (theirs < 0 || theirs > order.indexOf(car.id)) continue;
         const virtual = o.s - om + m; // the other car's position measured along this route
-        if (virtual < car.s || (virtual === car.s && o.id > car.id)) continue;
+        // The queue order gives way to reality in two cases, and this car goes first:
+        // - the earlier car is stuck before even reaching the merge (possibly behind
+        //   something that is waiting for this car), so it takes up no merge space;
+        // - this car is moving and already ahead of the earlier car at the merge.
+        // A stuck car never jumps ahead, so the two rules can't keep swapping back and forth.
+        if ((o.blocked && o.s < c.otherAt[0]) || (!car.blocked && virtual < car.s - 1)) {
+          order.splice(order.indexOf(car.id), 1);
+          order.splice(theirs, 0, car.id);
+          continue;
+        }
         room = Math.min(room, virtual - o.length - MIN_GAP - car.s);
       }
     }

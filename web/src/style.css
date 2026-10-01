@@ -135,6 +135,43 @@ body {
   display: none;
 }
 
+/* ---- Language switch (HR | EN) ---- */
+
+.lang-switch {
+  position: absolute;
+  top: 10px;
+  left: 10px; /* top-right is where the open menu goes */
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(16, 20, 26, 0.72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+.lang-switch button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #dfe6ee;
+  font: 600 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.lang-switch button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.lang-switch button[aria-pressed='true'] {
+  background: #fff;
+  color: #1d2833;
+}
+.lang-switch button:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
+}
+
 /* ---- Signals ---- */
 
 .lamp .on {
@@ -316,7 +353,8 @@ body {
 }
 
 .menu select {
-  width: calc(110 * var(--u));
+  width: auto;
+  max-width: calc(165 * var(--u));
   font: inherit;
   font-size: calc(13 * var(--u));
   font-weight: normal;
