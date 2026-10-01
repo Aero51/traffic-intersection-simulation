@@ -2,7 +2,7 @@
 // a single red square. The two turning arcs were replaced with cubic curves that stay on
 // the road, and each route is tied to the signal (and turn arrow) next to it.
 
-import type { Point, RouteDef } from './traffic';
+import type { Point, RouteDef, TrafficGroup } from './traffic';
 
 /** Where signal 1's stop line was drawn in the original (`linija`, never made visible). */
 const MAIN_STOP_LINE: Point = [529, 384];
@@ -77,64 +77,35 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
 ];
 
-/** Traffic sliders in the menu: one per approach, each feeding one or more lanes. */
-export interface TrafficGroup {
-  id: string;
+/** The MVC version's sliders: cars arriving from the east, north and west, 0-15 each. */
+export interface TrafficSlider extends TrafficGroup {
   label: string;
   description: string;
-  /** Share of the group's cars that use each lane. */
-  lanes: Record<string, number>;
-  /** Cars per minute. */
   initial: number;
 }
 
-export const MAX_CARS_PER_MINUTE = 40;
+export const MAX_CARS = 15;
 
-export const TRAFFIC_GROUPS: TrafficGroup[] = [
+export const TRAFFIC_GROUPS: TrafficSlider[] = [
   {
-    id: 'se',
-    label: 'Glavna ↘',
-    description: 'Glavna cesta, vozila prema jugoistoku',
-    lanes: { 'se-left': 0.6, 'se-right': 0.4 },
-    initial: 20,
-  },
-  {
-    id: 'nw',
-    label: 'Glavna ↖',
-    description: 'Glavna cesta, vozila prema sjeverozapadu',
+    id: 'istok',
+    label: 'Vozila istok',
+    description: 'Vozila s istoka (glavna cesta, dolje desno)',
     lanes: { 'nw-right': 0.6, 'nw-left': 0.4 },
-    initial: 20,
+    initial: 8,
   },
   {
-    id: 'side',
-    label: 'Sporedna ←',
-    description: 'Sporedna cesta, vozila prema raskrižju',
+    id: 'sjever',
+    label: 'Vozila sjever',
+    description: 'Vozila sa sjevera (sporedna cesta, gore desno)',
     lanes: { side: 1 },
+    initial: 4,
+  },
+  {
+    id: 'zapad',
+    label: 'Vozila zapad',
+    description: 'Vozila sa zapada (glavna cesta, gore lijevo)',
+    lanes: { 'se-left': 0.6, 'se-right': 0.4 },
     initial: 8,
   },
 ];
-
-/**
- * Spawn interval per lane for a group at `carsPerMinute`: the mean gap gives that rate,
- * with +-40% jitter so cars don't arrive like clockwork. Null means no cars.
- */
-export function laneIntervals(group: TrafficGroup, carsPerMinute: number): Record<string, [number, number] | null> {
-  const out: Record<string, [number, number] | null> = {};
-  for (const [lane, share] of Object.entries(group.lanes)) {
-    const perMinute = carsPerMinute * share;
-    const mean = 60 / perMinute;
-    out[lane] = perMinute > 0 ? [mean * 0.6, mean * 1.4] : null;
-  }
-  return out;
-}
-
-/** Initial spawn intervals for every lane. */
-export function initialIntervals(): Record<string, [number, number]> {
-  const out: Record<string, [number, number]> = {};
-  for (const group of TRAFFIC_GROUPS) {
-    for (const [lane, interval] of Object.entries(laneIntervals(group, group.initial))) {
-      if (interval) out[lane] = interval;
-    }
-  }
-  return out;
-}

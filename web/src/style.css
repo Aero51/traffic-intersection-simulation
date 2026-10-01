@@ -144,6 +144,7 @@ body {
   width: calc(320 * var(--u));
   font: bold calc(18 * var(--u)) / 1.2 system-ui, sans-serif;
   color: #131021;
+  color-scheme: light; /* native checkbox/slider/select match the light panel */
   transition: transform 700ms ease-in;
 }
 .menu.is-open {
@@ -198,6 +199,13 @@ body {
   border-bottom: 1px solid #a8abb0;
 }
 
+.menu-check {
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+  margin: 0 calc(6 * var(--u)) 0 0;
+  accent-color: #4a6c9b;
+}
+
 .menu-traffic {
   margin: calc(8 * var(--u)) 0 0;
   padding: 0;
@@ -227,7 +235,7 @@ body {
   border-bottom: 0;
 }
 .menu-slider label {
-  flex: 0 0 calc(92 * var(--u));
+  flex: 0 0 calc(112 * var(--u));
   white-space: nowrap;
 }
 .menu-slider input {

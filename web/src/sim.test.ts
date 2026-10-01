@@ -53,35 +53,43 @@ describe('default cycle (signals 1-4: 10/10, signal 5: 4/13)', () => {
 });
 
 describe('Tipkalo (pedestrian request)', () => {
-  it('serves all pedestrians in the next cycle and keeps the turn arrows off meanwhile', () => {
+  it('serves 6/7 at the next main-road red and 8/9 at the next side-road red', () => {
     const sim = new Simulation();
     at(sim, 5);
     sim.requestPedestrians();
     expect(sim.pedestrianRequestPending).toBe(true);
 
-    // Waiting for the next cycle: arrows already held back.
+    // Main road turns red: arrow 10 stays dark, then 6 and 7 cross after 1 s all-red.
     expect(at(sim, 12.5).turns).toEqual(['', '', '']);
-    expect(at(sim, 20.5).turns).toEqual(['', '', '']);
-    expect(at(sim, 22.5).pedestrians).toEqual(['R', 'R', 'R', 'R']);
-
-    // Next cycle: 8 and 9 cross the side road while signal 5 is red...
-    const next = at(sim, 23.5);
-    expect(sim.pedestrianRequestPending).toBe(false);
-    expect(next.pedestrians).toEqual(['R', 'R', 'G', 'G']);
-    expect(next.vehicles[4]).toBe('R');
-
-    // ...then 6 and 7 cross the main road while it is red, with no turn arrows.
-    const mainRed = at(sim, 23 + 13.5);
+    expect(at(sim, 12.5).pedestrians).toEqual(['R', 'R', 'R', 'R']);
+    const mainRed = at(sim, 13.5);
     expect(mainRed.vehicles.slice(0, 4)).toEqual(['R', 'R', 'R', 'R']);
-    expect(mainRed.pedestrians).toEqual(['G', 'G', 'G', 'G']);
-    expect(mainRed.turns).toEqual(['', '', '']);
-    expect(at(sim, 23 + 14.5).pedestrians).toEqual(['G', 'G', 'R', 'R']); // signal 5 red-yellow
-    expect(at(sim, 23 + 20.5).pedestrians).toEqual(['R', 'R', 'R', 'R']);
-    expect(at(sim, 23 + 20.5).turns).toEqual(['', '', '']);
+    expect(mainRed.pedestrians).toEqual(['G', 'G', 'R', 'R']);
+    expect(sim.pedestrianRequestPending).toBe(true); // 8/9 still waiting
+    expect(at(sim, 20.5).pedestrians).toEqual(['R', 'R', 'R', 'R']);
 
-    // Back to normal in the cycle after.
+    // Signal 5 turns red at the next cycle: 8 and 9 cross, request done.
+    const next = at(sim, 23.5);
+    expect(next.vehicles[4]).toBe('R');
+    expect(next.pedestrians).toEqual(['R', 'R', 'G', 'G']);
+    expect(sim.pedestrianRequestPending).toBe(false);
+    // Arrow 10 would cross the side crosswalk, so it stays dark while 8/9 walk...
+    expect(at(sim, 23 + 12.5).turns).toEqual(['', '', '']);
+    expect(at(sim, 23 + 14.5).pedestrians).toEqual(['R', 'R', 'R', 'R']);
+
+    // ...and everything is back to normal in the cycle after.
     expect(at(sim, 46 + 12.5).turns).toEqual(['G', '', '']);
     expect(at(sim, 46 + 13.5).pedestrians).toEqual(['R', 'R', 'R', 'R']);
+  });
+
+  it('waits for the following cycle when pressed after the main road went red', () => {
+    const sim = new Simulation();
+    at(sim, 15);
+    sim.requestPedestrians();
+    expect(at(sim, 16).pedestrians).toEqual(['R', 'R', 'R', 'R']);
+    expect(at(sim, 23.5).pedestrians).toEqual(['R', 'R', 'G', 'G']);
+    expect(at(sim, 23 + 13.5).pedestrians).toEqual(['G', 'G', 'G', 'G']);
+    expect(sim.pedestrianRequestPending).toBe(false);
   });
 
   it('is ignored in "Policajac" mode', () => {

@@ -5,7 +5,7 @@ import { Simulation, type SimSnapshot } from './sim';
 import { createMenu } from './menu';
 import { createIntro } from './intro';
 import { Traffic } from './traffic';
-import { ROUTE_DEFS, TRAFFIC_GROUPS, initialIntervals, laneIntervals } from './routes';
+import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
 import { CarLayer } from './cars';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -67,7 +67,9 @@ stage.appendChild(main);
 
 const { svg, signals, carLayer } = buildScene(main);
 const sim = new Simulation();
-const traffic = new Traffic(ROUTE_DEFS, initialIntervals());
+const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS);
+for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, g.initial);
+let automatic = false;
 
 // Phones get a second, finger-sized Tipkalo below the map.
 const phoneControls = document.createElement('div');
@@ -104,11 +106,9 @@ const menu = createMenu(main, {
   // The original scaled the selected signal to 2x (listenerPromjeneSemafora).
   onSelect: (i) => vehicleSignals.forEach((s, j) => s.setSelected(j === i)),
   trafficGroups: TRAFFIC_GROUPS,
-  onTrafficChange: (id, carsPerMinute) => {
-    const group = TRAFFIC_GROUPS.find((g) => g.id === id)!;
-    for (const [lane, interval] of Object.entries(laneIntervals(group, carsPerMinute))) {
-      traffic.setSpawnInterval(lane, interval);
-    }
+  onTrafficChange: (id, cars) => traffic.setTarget(id, cars),
+  onAutoChange: (enabled) => {
+    automatic = enabled;
   },
 });
 vehicleSignals.forEach((s, i) => s.root.addEventListener('click', () => menu.select(i)));
@@ -120,13 +120,23 @@ function frame(now: number): void {
   // Clamp so a backgrounded tab doesn't fast-forward through many cycles at once.
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
-  sim.advance(dt);
+  if (!automatic || signalsShouldRun(sim.snapshot())) sim.advance(dt);
   const snap = sim.snapshot();
   traffic.step(dt, snap);
   render(signals, snap);
   renderTipkalo();
   carLayer.render(traffic.cars);
   requestAnimationFrame(frame);
+}
+
+/**
+ * "Automatski režim" from the MVC version: the signal cycle holds while nobody is waiting,
+ * and runs when an induction loop reports a car at a red light (or Tipkalo was pressed).
+ * Yellow and red-yellow phases always finish so a signal never freezes mid-change.
+ */
+function signalsShouldRun(snap: SimSnapshot): boolean {
+  const changing = snap.vehicles.some((v) => v.yellow && !v.yellowBlinking);
+  return changing || sim.pedestrianRequestPending || traffic.waitingAtRed(snap);
 }
 
 function start(): void {

@@ -63,10 +63,14 @@ export class Simulation {
   private vehicles: Lights[] = Array.from({ length: VEHICLE_COUNT }, dark);
   private pedestrians: Lights[] = Array.from({ length: PEDESTRIAN_COUNT }, dark);
   private turns: Lights[] = Array.from({ length: TURN_COUNT }, dark);
-  /** Tipkalo was pressed; served at the start of signal 5's next cycle. (`iskljuciPjesake`) */
-  private pedestrianRequest = false;
-  /** The current cycle is serving a request: pedestrians cross, turn arrows stay off. */
-  private pedestrianCycle = false;
+  /**
+   * Tipkalo requests (`iskljuciPjesake` in the original), one per crossing: pedestrians 6/7
+   * cross the main road at its next red, 8/9 cross the side road when signal 5 next turns red.
+   */
+  private mainRequest = false;
+  private sideRequest = false;
+  private mainCrossing = false;
+  private sideCrossing = false;
   private _time = 0;
   private _mode: Mode = 'normal';
 
@@ -103,15 +107,17 @@ export class Simulation {
 
   /** True from a Tipkalo press until the pedestrians get green. */
   get pedestrianRequestPending(): boolean {
-    return this.pedestrianRequest;
+    return this.mainRequest || this.sideRequest;
   }
 
   /**
-   * "Tipkalo": at the start of signal 5's next cycle, pedestrians 8 and 9 get green while
-   * signal 5 is red, then 6 and 7 while the main road is red. Ignored in "Policajac" mode.
+   * "Tipkalo": pedestrians 6 and 7 get green at the main road's next red, and 8 and 9 at
+   * signal 5's next red (as in the MVC version). Ignored in "Policajac" mode.
    */
   requestPedestrians(): void {
-    if (this._mode === 'normal') this.pedestrianRequest = true;
+    if (this._mode !== 'normal') return;
+    this.mainRequest = true;
+    this.sideRequest = true;
   }
 
   /** Advance the clock by `dt` seconds, firing every keyframe in (time, time + dt]. */
@@ -174,16 +180,18 @@ export class Simulation {
   /** sviStop(): stop all tracks and turn every lamp off. */
   private stopAll(): void {
     this.tracks = [];
-    this.pedestrianRequest = false;
-    this.pedestrianCycle = false;
+    this.mainRequest = this.sideRequest = false;
+    this.mainCrossing = this.sideCrossing = false;
     for (const group of [this.vehicles, this.pedestrians, this.turns]) {
       for (let i = 0; i < group.length; i++) group[i] = dark();
     }
   }
 
-  /** Turn arrows would send cars across the crosswalks, so they stay off for pedestrians. */
-  private get arrowsAllowed(): boolean {
-    return !this.pedestrianRequest && !this.pedestrianCycle;
+  private setCrossing(peds: Lights[], green: boolean): void {
+    for (const ped of peds) {
+      ped.green = green;
+      ped.red = !green;
+    }
   }
 
   private cyclePosition(index: number): number {
@@ -235,26 +243,34 @@ export class Simulation {
   private mainKeyframes(index: number, open: number, closed: number): Keyframe[] {
     const v = () => this.vehicles[index];
     const drivesTurns = index === 3;
+    const crossing = [this.pedestrians[0], this.pedestrians[1]];
     return [
-      { at: 0, fire: () => { v().yellowBlinking = false; v().green = true; } },
+      {
+        at: 0,
+        fire: () => {
+          v().yellowBlinking = false;
+          v().green = true;
+          if (drivesTurns && !this.mainCrossing) this.setCrossing(crossing, false);
+        },
+      },
       { at: open, fire: () => { v().yellow = true; v().green = false; } },
       {
         at: open + YELLOW,
         fire: () => {
           v().red = true;
           v().yellow = false;
-          if (drivesTurns && this.arrowsAllowed) this.turns[0].green = true;
+          // Right turners on arrow 10 cross both crosswalks, so it stays dark for pedestrians.
+          if (drivesTurns && !this.mainRequest && !this.sideCrossing) this.turns[0].green = true;
         },
       },
       {
-        // Pedestrians 6 and 7 cross the main road while it is red (not in the original).
+        // One second of all-red clearance, then pedestrians 6 and 7 cross the main road.
         at: open + YELLOW + 1,
         fire: () => {
-          if (!drivesTurns || !this.pedestrianCycle) return;
-          for (const ped of [this.pedestrians[0], this.pedestrians[1]]) {
-            ped.red = false;
-            ped.green = true;
-          }
+          if (!drivesTurns || !this.mainRequest) return;
+          this.mainRequest = false;
+          this.mainCrossing = true;
+          this.setCrossing(crossing, true);
         },
       },
       {
@@ -262,16 +278,16 @@ export class Simulation {
         fire: () => {
           if (!drivesTurns) return;
           this.turns[0].green = false;
-          for (const ped of [this.pedestrians[0], this.pedestrians[1]]) {
-            ped.green = false;
-            ped.red = true;
+          if (this.mainCrossing) {
+            this.mainCrossing = false;
+            this.setCrossing(crossing, false);
           }
         },
       },
       {
         at: open + closed,
         fire: () => {
-          if (drivesTurns && this.arrowsAllowed) {
+          if (drivesTurns && !this.sideCrossing) {
             this.turns[1].green = true;
             this.turns[2].green = true;
           }
@@ -295,32 +311,24 @@ export class Simulation {
   /** Signal 5 (side road) starts red, and owns the pedestrian lights. */
   private sideKeyframes(open: number, closed: number): Keyframe[] {
     const v = () => this.vehicles[4];
-    const p = this.pedestrians;
+    const crossing = [this.pedestrians[2], this.pedestrians[3]];
     return [
       {
         at: 0,
         fire: () => {
           v().red = true;
           v().yellowBlinking = false;
-          for (const ped of p) ped.red = true;
-          this.pedestrianCycle = this.pedestrianRequest;
-          if (this.pedestrianRequest) {
-            for (const ped of [p[3], p[2]]) {
-              ped.red = false;
-              ped.green = true;
-            }
-            this.pedestrianRequest = false;
-          }
+          this.sideCrossing = this.sideRequest;
+          this.sideRequest = false;
+          this.setCrossing(crossing, this.sideCrossing);
         },
       },
       {
         at: closed + 1,
         fire: () => {
           v().yellow = true;
-          for (const ped of [p[3], p[2]]) {
-            ped.green = false;
-            ped.red = true;
-          }
+          this.sideCrossing = false;
+          this.setCrossing(crossing, false);
         },
       },
       { at: closed + 2, fire: () => { v().yellow = false; v().red = false; v().green = true; } },

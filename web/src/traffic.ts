@@ -33,8 +33,16 @@ export interface Route {
   stopAt: number;
 }
 
+/** Cars entering from one side of the map, shared between that side's lanes. */
+export interface TrafficGroup {
+  id: string;
+  /** Share of the group's cars that use each lane. */
+  lanes: Record<string, number>;
+}
+
 export interface Car {
   id: number;
+  group: string;
   route: Route;
   /** Distance of the car's front along its route. */
   s: number;
@@ -47,6 +55,10 @@ export const MIN_GAP = 5;
 export const MAX_SPEED = 60; // px/s
 const ACCEL = 35;
 const BRAKE = 70; // comfortable deceleration, px/s^2
+
+/** How far before its stop line a waiting car is picked up by the induction loop. */
+export const LOOP_LENGTH = 40;
+const SPAWN_SPACING: [number, number] = [0.6, 1.4]; // seconds between cars from one side
 
 export const CAR_COLORS = ['#c62828', '#1565c0', '#eeeeee', '#212121', '#9e9e9e', '#f9a825', '#2e7d32', '#6d4c41'];
 
@@ -152,42 +164,54 @@ export class Traffic {
   private nextId = 1;
   private shared = new Map<Route, Map<Route, number>>();
   private spawnTimers = new Map<string, number>();
-  private spawnIntervals: Record<string, [number, number]>;
+  private targets = new Map<string, number>();
 
   constructor(
     defs: RouteDef[],
-    spawnIntervals: Record<string, [number, number]>,
+    private groups: TrafficGroup[],
     private random: () => number = Math.random,
   ) {
-    this.spawnIntervals = { ...spawnIntervals };
     this.routes = defs.map(buildRoute);
     for (const a of this.routes) {
       const m = new Map<Route, number>();
       for (const b of this.routes) if (a.def.lane === b.def.lane) m.set(b, sharedPrefix(a, b));
       this.shared.set(a, m);
     }
-    // Stagger the first cars so lanes don't all start at once.
-    for (const lane of Object.keys(spawnIntervals)) this.spawnTimers.set(lane, this.random() * 2);
+    // Stagger the first cars so the sides don't all start at once.
+    for (const g of groups) this.spawnTimers.set(g.id, this.random() * 2);
   }
 
-  /** Change how often cars enter a lane, in seconds [min, max]; null stops new cars. */
-  setSpawnInterval(lane: string, interval: [number, number] | null): void {
-    if (!interval) {
-      delete this.spawnIntervals[lane];
-      return;
-    }
-    this.spawnIntervals[lane] = interval;
-    // Don't keep waiting out a long timer from a lower rate.
-    const [min, max] = interval;
-    if ((this.spawnTimers.get(lane) ?? 0) > max) this.spawnTimers.set(lane, min + this.random() * (max - min));
+  /**
+   * How many cars should be driving in from one side ("Vozila istok/sjever/zapad" in the
+   * MVC version). New cars enter until the count is reached; lowering it lets the extra
+   * cars drive off without being replaced.
+   */
+  setTarget(groupId: string, count: number): void {
+    this.targets.set(groupId, count);
+  }
+
+  count(groupId: string): number {
+    return this.cars.filter((c) => c.group === groupId).length;
+  }
+
+  /**
+   * Induction loops ("induktivna petlja"): true if a car is standing in front of a stop
+   * line that isn't letting it through.
+   */
+  waitingAtRed(snap: SimSnapshot): boolean {
+    return this.cars.some((car) => {
+      const toLine = car.route.stopAt - car.s;
+      return toLine >= -0.5 && toLine <= LOOP_LENGTH && car.v < 1 && lightFor(car.route.def.control, snap) !== 'go';
+    });
   }
 
   /** Add a car at the start of a route if there's room. Returns it, or null. */
-  spawn(route: Route): Car | null {
+  spawn(route: Route, group = route.def.lane): Car | null {
     const room = this.roomAhead(route, 0, null);
     if (room < 0) return null;
     const car: Car = {
       id: this.nextId++,
+      group,
       route,
       s: 0,
       v: Math.min(MAX_SPEED, Math.sqrt(2 * BRAKE * room)),
@@ -213,19 +237,27 @@ export class Traffic {
   }
 
   private spawnDue(dt: number): void {
-    for (const [lane, [min, max]] of Object.entries(this.spawnIntervals)) {
-      const t = (this.spawnTimers.get(lane) ?? 0) - dt;
+    for (const group of this.groups) {
+      const t = (this.spawnTimers.get(group.id) ?? 0) - dt;
       if (t > 0) {
-        this.spawnTimers.set(lane, t);
+        this.spawnTimers.set(group.id, t);
         continue;
       }
-      const options = this.routes.filter((r) => r.def.lane === lane);
-      const total = options.reduce((sum, r) => sum + r.def.weight, 0);
-      let pick = this.random() * total;
-      const route = options.find((r) => (pick -= r.def.weight) < 0) ?? options[0];
+      if (this.count(group.id) >= (this.targets.get(group.id) ?? 0)) {
+        this.spawnTimers.set(group.id, 0);
+        continue;
+      }
+      const lane = this.pick(Object.entries(group.lanes));
+      const route = this.pick(this.routes.filter((r) => r.def.lane === lane).map((r) => [r, r.def.weight] as const));
+      const [min, max] = SPAWN_SPACING;
       // Retry soon if the entry is blocked by a queue.
-      this.spawnTimers.set(lane, this.spawn(route) ? min + this.random() * (max - min) : 0.5);
+      this.spawnTimers.set(group.id, this.spawn(route, group.id) ? min + this.random() * (max - min) : 0.3);
     }
+  }
+
+  private pick<T>(weighted: readonly (readonly [T, number])[]): T {
+    let r = this.random() * weighted.reduce((sum, [, w]) => sum + w, 0);
+    return (weighted.find(([, w]) => (r -= w) < 0) ?? weighted[0])[0];
   }
 
   /** Distance this car may still travel before it has to be stopped. */

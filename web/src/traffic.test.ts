@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CAR_LENGTH, MIN_GAP, Traffic, buildRoute, lightFor, type RouteDef } from './traffic';
 import { Simulation, type SimSnapshot } from './sim';
-import { ROUTE_DEFS } from './routes';
+import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
 
 const straight: RouteDef = {
   id: 'straight',
@@ -33,7 +33,7 @@ function snapshot(signal0: 'red' | 'yellow' | 'green' | 'blink', arrow0 = false)
 }
 
 /** Traffic with no automatic spawning. */
-const manual = (defs: RouteDef[]) => new Traffic(defs, {});
+const manual = (defs: RouteDef[]) => new Traffic(defs, []);
 
 function run(traffic: Traffic, seconds: number, snap: SimSnapshot): void {
   for (let t = 0; t < seconds; t += 1 / 60) traffic.step(1 / 60, snap);
@@ -128,19 +128,31 @@ describe('Traffic', () => {
     expect(a.s - b.s).toBeGreaterThanOrEqual(CAR_LENGTH + MIN_GAP - 0.01);
   });
 
-  it('stops and restarts spawning when a lane rate changes', () => {
-    const traffic = new Traffic([straight], { a: [1, 1] }, () => 0.5);
+  it('keeps the number of cars from a side at its slider value', () => {
+    const traffic = new Traffic([straight], [{ id: 'g', lanes: { a: 1 } }], () => 0.5);
     const green = snapshot('green');
     run(traffic, 5, green);
-    expect(traffic.cars.length).toBeGreaterThan(2);
+    expect(traffic.cars).toHaveLength(0); // slider starts at 0
 
-    traffic.setSpawnInterval('a', null);
-    run(traffic, 10, green);
+    traffic.setTarget('g', 3);
+    run(traffic, 5, green);
+    expect(traffic.count('g')).toBe(3);
+    run(traffic, 20, green); // cars leaving are replaced
+    expect(traffic.count('g')).toBe(3);
+
+    traffic.setTarget('g', 0);
+    run(traffic, 10, green); // the rest drive off
     expect(traffic.cars).toHaveLength(0);
+  });
 
-    traffic.setSpawnInterval('a', [0.5, 0.5]);
-    run(traffic, 3, green);
-    expect(traffic.cars.length).toBeGreaterThanOrEqual(2); // entry capacity is ~1 car per 1.2 s
+  it('reports cars standing at a red light (induction loop)', () => {
+    const traffic = manual([straight]);
+    traffic.spawn(traffic.routes[0]);
+    run(traffic, 1, snapshot('red'));
+    expect(traffic.waitingAtRed(snapshot('red'))).toBe(false); // still driving up
+    run(traffic, 10, snapshot('red'));
+    expect(traffic.waitingAtRed(snapshot('red'))).toBe(true);
+    expect(traffic.waitingAtRed(snapshot('green'))).toBe(false);
   });
 
   it('removes cars after they leave the route', () => {
@@ -154,7 +166,8 @@ describe('Traffic', () => {
     let seed = 1;
     const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const sim = new Simulation();
-    const traffic = new Traffic(ROUTE_DEFS, { 'nw-right': [1, 2], 'se-left': [1, 2], side: [1, 2] }, random);
+    const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
+    for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 15);
     let maxCars = 0;
     let minGap = Infinity;
     for (let i = 0; i < 60 * 300; i++) {

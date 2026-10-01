@@ -1,7 +1,7 @@
 // "Izbornik": the sliding settings panel from GlavnaKlasa.start() (iphoneMenu group).
 
 import { VEHICLE_COUNT, type Mode, type SignalTiming } from './sim';
-import { MAX_CARS_PER_MINUTE, type TrafficGroup } from './routes';
+import { MAX_CARS, type TrafficSlider } from './routes';
 
 export interface MenuCallbacks {
   /** Current timing of a vehicle signal (0-based index), to fill the spinners. */
@@ -9,9 +9,11 @@ export interface MenuCallbacks {
   onModeChange(mode: Mode): void;
   onSelect(index: number | null): void;
   onApply(index: number, timing: SignalTiming): void;
-  /** Traffic sliders, applied immediately (no Prihvati needed). */
-  trafficGroups: TrafficGroup[];
-  onTrafficChange(groupId: string, carsPerMinute: number): void;
+  /** "Automatski režim": signals only run while a car waits at a red light. */
+  onAutoChange(enabled: boolean): void;
+  /** Car count sliders, applied immediately (no Prihvati needed). */
+  trafficGroups: TrafficSlider[];
+  onTrafficChange(groupId: string, cars: number): void;
 }
 
 export interface Menu {
@@ -34,11 +36,11 @@ const spinner = (name: string, label: string, disabled = false) => `
     </div>
   </div>`;
 
-const slider = (g: TrafficGroup) => `
+const slider = (g: TrafficSlider) => `
   <div class="menu-row menu-slider">
     <label for="traffic-${g.id}" title="${g.description}">${g.label}</label>
-    <input id="traffic-${g.id}" type="range" min="0" max="${MAX_CARS_PER_MINUTE}" step="1" value="${g.initial}"
-      data-group="${g.id}" aria-label="${g.description}, vozila po minuti" />
+    <input id="traffic-${g.id}" type="range" min="0" max="${MAX_CARS}" step="1" value="${g.initial}"
+      data-group="${g.id}" aria-label="${g.description}, broj vozila" />
     <output for="traffic-${g.id}">${g.initial}</output>
   </div>`;
 
@@ -57,13 +59,17 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
             <option value="flashing">Policajac</option>
           </select>
         </div>
+        <div class="menu-row">
+          <label for="menu-auto" title="Semafori se izmjenjuju samo kad vozilo čeka na crvenom (induktivna petlja)">Automatski režim</label>
+          <input id="menu-auto" name="auto" type="checkbox" class="menu-check" />
+        </div>
         ${spinner('signal', 'Semafor:')}
         ${spinner('open', 'Vrijeme otvorenosti:')}
         ${spinner('closed', 'Vrijeme zatvorenosti:', true)}
         <div class="menu-toolbar"><button type="submit" class="menu-apply">Prihvati</button></div>
       </div>
       <fieldset class="menu-card menu-traffic">
-        <legend class="menu-row menu-subhead"><span>Promet</span><span class="menu-unit">vozila / min</span></legend>
+        <legend class="menu-row menu-subhead"><span>Promet</span><span class="menu-unit">broj vozila</span></legend>
         ${cb.trafficGroups.map(slider).join('')}
       </fieldset>
     </form>`;
@@ -122,6 +128,9 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   }
 
   header.addEventListener('click', () => setExpanded(!expanded));
+
+  const auto = form.querySelector<HTMLInputElement>('#menu-auto')!;
+  auto.addEventListener('change', () => cb.onAutoChange(auto.checked));
 
   mode.addEventListener('change', () => {
     if (mode.value === 'normal' || mode.value === 'flashing') cb.onModeChange(mode.value);
