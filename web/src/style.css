@@ -41,29 +41,94 @@ body {
   user-select: none;
 }
 
-/* .main holds the intersection; the intro sits on top of it until unlocked. */
-.stage {
-  perspective: 1600px;
-}
+/* .main holds the intersection, the menu and the phone controls. */
 .main {
   position: relative;
   width: 100%;
   height: 100%;
 }
-.stage.is-intro .main {
-  visibility: hidden;
+
+.cars,
+.walkers,
+.loops {
+  pointer-events: none;
 }
-.main.is-entering {
-  animation: flip-in 800ms ease-out;
+
+/* A touch more colour and contrast so the photo doesn't look washed out. */
+.photo {
+  filter: saturate(1.12) contrast(1.06);
 }
-@keyframes flip-in {
-  from {
-    transform: rotateY(-90deg);
+
+/* ---- Cars ---- */
+
+.car .head {
+  fill: #fff8d6;
+}
+.car .tail {
+  fill: #6d0b0b;
+}
+.car.is-braking .tail {
+  fill: #ff2a1f;
+  filter: url(#lamp-glow);
+}
+.car .ind {
+  fill: #ffb300;
+  opacity: 0;
+}
+.car.indicating-left .ind-left,
+.car.indicating-right .ind-right {
+  filter: url(#lamp-glow);
+  animation: indicator 0.7s steps(1, end) infinite;
+  animation-delay: var(--blink-delay, 0s);
+}
+@keyframes indicator {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
   }
 }
 
-.cars {
-  pointer-events: none;
+/* ---- Pedestrians ---- */
+
+.walker.is-walking .foot-l {
+  animation: step 0.5s ease-in-out infinite alternate;
+  animation-delay: var(--step-delay, 0s);
+}
+.walker.is-walking .foot-r {
+  animation: step 0.5s ease-in-out infinite alternate-reverse;
+  animation-delay: var(--step-delay, 0s);
+}
+@keyframes step {
+  from {
+    transform: translateX(-2.6px);
+  }
+  to {
+    transform: translateX(2.6px);
+  }
+}
+
+/* ---- Induction loops (Automatski režim) ---- */
+
+.loops {
+  opacity: 0;
+  transition: opacity 300ms;
+}
+.loops.is-visible {
+  opacity: 1;
+}
+.loop {
+  fill: rgba(255, 255, 255, 0.06);
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  transition: fill 200ms, stroke 200ms;
+}
+.loop.is-occupied {
+  fill: rgba(255, 193, 7, 0.28);
+  stroke: #ffc107;
+  stroke-dasharray: none;
 }
 
 .phone-controls {
@@ -341,137 +406,8 @@ body {
   transform: translateY(1px);
 }
 
-/* ---- Intro (pocetni scene) ---- */
-
-.intro {
-  --u: calc(100cqw / 900);
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: calc(10 * var(--u));
-  background: #111 url('/intro.webp') top / cover;
-  overflow: hidden;
-}
-.intro.is-leaving {
-  animation: flip-out 800ms ease-in forwards;
-}
-@keyframes flip-out {
-  to {
-    transform: rotateY(90deg);
-  }
-}
-
-.intro-title,
-.intro-author {
-  margin: 0;
-  font-family: 'Arial Black', 'Arial', sans-serif;
-  font-weight: 900;
-  color: #635551;
-  line-height: 1.1;
-  text-align: center;
-}
-.intro-title {
-  font-size: calc(52 * var(--u));
-  /* The original stacked a red-orange DropShadow glow with a faint yellow offset shadow. */
-  text-shadow:
-    0 0 calc(12 * var(--u)) rgba(241, 58, 0, 0.9),
-    calc(5 * var(--u)) calc(5 * var(--u)) calc(5 * var(--u)) rgba(254, 235, 66, 0.3);
-}
-.intro-walkers {
-  height: calc(122 * var(--u));
-  width: auto;
-  margin-top: calc(12 * var(--u));
-}
-.intro-author {
-  font-size: calc(64 * var(--u));
-  text-shadow:
-    0 calc(2 * var(--u)) calc(6 * var(--u)) rgba(0, 0, 0, 0.8),
-    0 -1px 0 rgba(255, 255, 255, 0.25);
-}
-
-.slide-lock {
-  margin-top: auto;
-  margin-bottom: calc(22 * var(--u));
-  width: calc(366 * var(--u));
-  padding: calc(12 * var(--u));
-  border: 1px solid #3a3a3a;
-  border-radius: calc(20 * var(--u));
-  background: linear-gradient(#2c2c2c, #0b0b0b);
-  box-shadow: 0 calc(4 * var(--u)) calc(16 * var(--u)) rgba(0, 0, 0, 0.7);
-}
-.slide-track {
-  position: relative;
-  height: calc(62 * var(--u));
-  border-radius: calc(13 * var(--u));
-  background: linear-gradient(#000, #1e1e1e);
-  box-shadow: inset 0 2px 6px #000;
-  overflow: hidden;
-}
-.slide-text {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding-left: calc(84 * var(--u));
-  font: calc(25 * var(--u)) Arial, sans-serif;
-  color: transparent;
-  background: linear-gradient(90deg, #666 0%, #666 40%, #fff 50%, #666 60%, #666 100%) 100% 0 / 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: shimmer 2.6s linear infinite;
-  pointer-events: none;
-}
-@keyframes shimmer {
-  to {
-    background-position: 0 0;
-  }
-}
-.slide-knob {
-  position: absolute;
-  top: calc(4 * var(--u));
-  bottom: calc(4 * var(--u));
-  left: calc(4 * var(--u));
-  width: calc(84 * var(--u));
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.6);
-  border-radius: calc(10 * var(--u));
-  background: linear-gradient(to top, #6ff603, #368005);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-  color: #fff;
-  cursor: grab;
-  touch-action: none;
-  transition: transform 250ms ease-out;
-}
-.slide-knob.is-dragging {
-  cursor: grabbing;
-  transition: none;
-}
-.slide-knob svg {
-  width: 45%;
-  height: 45%;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
-}
-.slide-knob:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-}
-
 /* Phones: the scaled panel would be unreadable, so it moves below the map at real size. */
 @media (max-width: 720px) {
-  .stage.is-intro {
-    aspect-ratio: 3 / 4;
-  }
-  .stage.is-intro .main {
-    display: none;
-  }
-  .intro {
-    --u: calc(100cqw / 520);
-    justify-content: flex-start;
-  }
   .main {
     height: auto;
   }
@@ -530,12 +466,11 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .menu,
-  .signal-body,
-  .slide-knob {
+  .signal-body {
     transition: none;
   }
-  .slide-text {
-    animation: none;
-    color: #aaa;
+  .walker .foot,
+  .car .ind {
+    animation: none !important;
   }
 }

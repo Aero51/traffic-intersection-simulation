@@ -22,6 +22,10 @@ export interface RouteDef {
   control: Control;
   /** The stop line is the point on the route closest to this. */
   stopNear: Point;
+  /** Which indicator a car on this route uses before it leaves its lane-mates. */
+  turn?: 'left' | 'right';
+  /** Extend both ends straight on by this many px, so cars enter and leave off-screen. */
+  extend?: number;
   path: [Point, ...Segment[]];
 }
 
@@ -29,8 +33,12 @@ export interface Route {
   def: RouteDef;
   /** x, y pairs, one per pixel of length. */
   points: Float64Array;
+  /** Highest speed at each pixel that still allows braking for the curves ahead. */
+  speed: Float64Array;
   length: number;
   stopAt: number;
+  /** Where this route leaves the others in its lane (its turn), or Infinity. */
+  divergeAt: number;
 }
 
 /** Cars entering from one side of the map, shared between that side's lanes. */
@@ -40,32 +48,61 @@ export interface TrafficGroup {
   lanes: Record<string, number>;
 }
 
+export type VehicleKind = 'sedan' | 'hatch' | 'van';
+
+export interface VehicleType {
+  kind: VehicleKind;
+  length: number;
+  width: number;
+  weight: number;
+}
+
+/** Sized after the cars parked in the background photo (about 40-46 x 18-19 px). */
+export const VEHICLE_TYPES: VehicleType[] = [
+  { kind: 'sedan', length: 42, width: 18, weight: 5 },
+  { kind: 'hatch', length: 36, width: 17, weight: 3 },
+  { kind: 'van', length: 48, width: 20, weight: 1.2 },
+];
+
 export interface Car {
   id: number;
   group: string;
   route: Route;
+  kind: VehicleKind;
+  length: number;
+  width: number;
   /** Distance of the car's front along its route. */
   s: number;
   v: number;
   color: string;
+  /** Slowing down or standing still: brake lights on. */
+  braking: boolean;
+  indicator: 'left' | 'right' | null;
 }
 
-export const CAR_LENGTH = 22;
-export const MIN_GAP = 5;
-export const MAX_SPEED = 60; // px/s
-const ACCEL = 35;
-const BRAKE = 70; // comfortable deceleration, px/s^2
+export const MIN_GAP = 7;
+export const MAX_SPEED = 85; // px/s
+const ACCEL = 50;
+const BRAKE = 110; // comfortable deceleration, px/s^2
+const LATERAL_ACCEL = 70; // how hard cars corner, px/s^2
 
 /** How far before its stop line a waiting car is picked up by the induction loop. */
-export const LOOP_LENGTH = 40;
+export const LOOP_LENGTH = 50;
 const SPAWN_SPACING: [number, number] = [0.6, 1.4]; // seconds between cars from one side
 
-export const CAR_COLORS = ['#c62828', '#1565c0', '#eeeeee', '#212121', '#9e9e9e', '#f9a825', '#2e7d32', '#6d4c41'];
+/** Indicator: on from this far before the turn until this far into it. */
+const INDICATE_BEFORE = 220;
+const INDICATE_AFTER = 120;
+
+export const CAR_COLORS = [
+  '#b71c1c', '#0d47a1', '#eceff1', '#eceff1', '#212121', '#263238', '#9e9e9e', '#78909c',
+  '#f9a825', '#1b5e20', '#4e342e', '#e65100', '#1565c0', '#cfd8dc',
+];
 
 // ------------------------------------------------------------------ geometry
 
-function flatten(path: RouteDef['path']): Point[] {
-  const [start, ...segments] = path;
+function flatten(def: RouteDef): Point[] {
+  const [start, ...segments] = def.path;
   const out: Point[] = [start];
   let [x0, y0] = start;
   for (const seg of segments) {
@@ -85,6 +122,15 @@ function flatten(path: RouteDef['path']): Point[] {
       }
       [x0, y0] = [x, y];
     }
+  }
+  const e = def.extend ?? 0;
+  if (e > 0) {
+    const away = ([ax, ay]: Point, [bx, by]: Point): Point => {
+      const len = Math.hypot(ax - bx, ay - by);
+      return [ax + ((ax - bx) / len) * e, ay + ((ay - by) / len) * e];
+    };
+    out.unshift(away(out[0], out[1]));
+    out.push(away(out[out.length - 1], out[out.length - 2]));
   }
   return out;
 }
@@ -108,8 +154,26 @@ function resample(poly: Point[]): Float64Array {
   return Float64Array.from(out);
 }
 
+/** Corner speed limit from curvature, then a backward pass so cars brake before curves. */
+function speedProfile(points: Float64Array, length: number): Float64Array {
+  const speed = new Float64Array(length + 1).fill(MAX_SPEED);
+  const k = 6;
+  const heading = (a: number, b: number) =>
+    Math.atan2(points[2 * b + 1] - points[2 * a + 1], points[2 * b] - points[2 * a]);
+  for (let i = k; i <= length - k; i++) {
+    let turn = Math.abs(heading(i, i + k) - heading(i - k, i));
+    if (turn > Math.PI) turn = 2 * Math.PI - turn;
+    const curvature = turn / k;
+    if (curvature > 1e-4) speed[i] = Math.min(MAX_SPEED, Math.sqrt(LATERAL_ACCEL / curvature));
+  }
+  for (let i = length - 1; i >= 0; i--) {
+    speed[i] = Math.min(speed[i], Math.sqrt(speed[i + 1] ** 2 + 2 * BRAKE));
+  }
+  return speed;
+}
+
 export function buildRoute(def: RouteDef): Route {
-  const points = resample(flatten(def.path));
+  const points = resample(flatten(def));
   const length = points.length / 2 - 1;
   let stopAt = 0;
   let best = Infinity;
@@ -117,15 +181,15 @@ export function buildRoute(def: RouteDef): Route {
     const d = Math.hypot(points[2 * i] - def.stopNear[0], points[2 * i + 1] - def.stopNear[1]);
     if (d < best) [best, stopAt] = [d, i];
   }
-  return { def, points, length, stopAt };
+  return { def, points, speed: speedProfile(points, length), length, stopAt, divergeAt: Infinity };
 }
 
-/** Position and heading (radians) at distance `s` along a route. */
-export function pose(route: Route, s: number): { x: number; y: number; angle: number } {
+/** Position and heading (radians) at distance `s` along a route, averaged over `span` px. */
+export function pose(route: Route, s: number, span = 8): { x: number; y: number; angle: number } {
   const clamp = (i: number) => Math.min(route.length, Math.max(0, Math.round(i)));
   const i = clamp(s);
-  const a = clamp(s - 4);
-  const b = clamp(s + 4);
+  const a = clamp(s - span / 2);
+  const b = clamp(s + span / 2);
   const p = route.points;
   return {
     x: p[2 * i],
@@ -174,7 +238,12 @@ export class Traffic {
     this.routes = defs.map(buildRoute);
     for (const a of this.routes) {
       const m = new Map<Route, number>();
-      for (const b of this.routes) if (a.def.lane === b.def.lane) m.set(b, sharedPrefix(a, b));
+      for (const b of this.routes) {
+        if (a.def.lane !== b.def.lane) continue;
+        const prefix = sharedPrefix(a, b);
+        m.set(b, prefix);
+        if (a !== b && a.def.turn) a.divergeAt = Math.min(a.divergeAt, prefix);
+      }
       this.shared.set(a, m);
     }
     // Stagger the first cars so the sides don't all start at once.
@@ -199,23 +268,38 @@ export class Traffic {
    * line that isn't letting it through.
    */
   waitingAtRed(snap: SimSnapshot): boolean {
-    return this.cars.some((car) => {
+    return this.occupiedLoops(snap).size > 0;
+  }
+
+  /** Lanes whose induction loop currently has a car waiting on it. */
+  occupiedLoops(snap: SimSnapshot): Set<string> {
+    const lanes = new Set<string>();
+    for (const car of this.cars) {
       const toLine = car.route.stopAt - car.s;
-      return toLine >= -0.5 && toLine <= LOOP_LENGTH && car.v < 1 && lightFor(car.route.def.control, snap) !== 'go';
-    });
+      if (toLine >= -0.5 && toLine <= LOOP_LENGTH && car.v < 1 && lightFor(car.route.def.control, snap) !== 'go') {
+        lanes.add(car.route.def.lane);
+      }
+    }
+    return lanes;
   }
 
   /** Add a car at the start of a route if there's room. Returns it, or null. */
   spawn(route: Route, group = route.def.lane): Car | null {
     const room = this.roomAhead(route, 0, null);
     if (room < 0) return null;
+    const type = this.pick(VEHICLE_TYPES.map((t) => [t, t.weight] as const));
     const car: Car = {
       id: this.nextId++,
       group,
       route,
+      kind: type.kind,
+      length: type.length,
+      width: type.width,
       s: 0,
-      v: Math.min(MAX_SPEED, Math.sqrt(2 * BRAKE * room)),
+      v: Math.min(route.speed[0], Math.sqrt(2 * BRAKE * room)),
       color: CAR_COLORS[Math.floor(this.random() * CAR_COLORS.length)],
+      braking: false,
+      indicator: null,
     };
     this.cars.push(car);
     return car;
@@ -229,11 +313,17 @@ export class Traffic {
     const limits = this.cars.map((car) => this.limitFor(car, snap));
     this.cars.forEach((car, i) => {
       const limit = limits[i];
-      const target = Math.min(MAX_SPEED, Math.sqrt(2 * BRAKE * Math.max(0, limit)));
+      const { route } = car;
+      const curve = route.speed[Math.min(route.length, Math.max(0, Math.floor(car.s)))];
+      const target = Math.min(curve, Math.sqrt(2 * BRAKE * Math.max(0, limit)));
+      car.braking = target < car.v - 0.5 || car.v < 1;
       car.v = car.v < target ? Math.min(target, car.v + ACCEL * dt) : Math.max(target, car.v - 3 * BRAKE * dt);
       car.s += Math.min(car.v * dt, Math.max(0, limit));
+
+      const d = car.s - route.divergeAt;
+      car.indicator = route.def.turn && d > -INDICATE_BEFORE && d < INDICATE_AFTER ? route.def.turn : null;
     });
-    this.cars = this.cars.filter((c) => c.s - CAR_LENGTH < c.route.length);
+    this.cars = this.cars.filter((c) => c.s - c.length < c.route.length);
   }
 
   private spawnDue(dt: number): void {
@@ -279,8 +369,8 @@ export class Traffic {
 
   /**
    * Free distance from a front bumper at `s` on `route` to the rear bumper of the nearest
-   * car ahead, minus the safety gap, counting cars on other routes of the same lane while both are still on
-   * the shared stretch.
+   * car ahead, minus the safety gap, counting cars on other routes of the same lane while
+   * both are still on the shared stretch.
    */
   private roomAhead(route: Route, s: number, self: Car | null): number {
     let room = Infinity;
@@ -293,8 +383,9 @@ export class Traffic {
       // A new car (self === null) counts anything at the entry as ahead of it.
       const ahead = other.s > s || (other.s === s && (self === null || other.id < self.id));
       if (!ahead) continue;
-      if (!sameRoute && (other.s - CAR_LENGTH > prefix || s > prefix)) continue;
-      room = Math.min(room, other.s - CAR_LENGTH - MIN_GAP - s);
+      const rear = other.s - other.length;
+      if (!sameRoute && (rear > prefix || s > prefix)) continue;
+      room = Math.min(room, rear - MIN_GAP - s);
     }
     return room;
   }

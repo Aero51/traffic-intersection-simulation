@@ -4,6 +4,9 @@
 
 import type { Point, RouteDef, TrafficGroup } from './traffic';
 
+/** Cars enter and leave this far beyond the picture edge instead of popping in. */
+const OFF_SCREEN = 90;
+
 /** Where signal 1's stop line was drawn in the original (`linija`, never made visible). */
 const MAIN_STOP_LINE: Point = [529, 384];
 
@@ -11,6 +14,7 @@ export const ROUTE_DEFS: RouteDef[] = [
   // North-west bound main road (from bottom right).
   {
     id: 'nw-straight',
+    extend: OFF_SCREEN,
     lane: 'nw-right',
     weight: 3,
     control: { signal: 0 },
@@ -19,6 +23,8 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
   {
     id: 'nw-right-turn',
+    extend: OFF_SCREEN,
+    turn: 'right',
     lane: 'nw-right',
     weight: 2,
     control: { signal: 0, arrow: 0 },
@@ -27,6 +33,7 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
   {
     id: 'nw-left-lane',
+    extend: OFF_SCREEN,
     lane: 'nw-left',
     weight: 1,
     control: { signal: 1 },
@@ -36,6 +43,7 @@ export const ROUTE_DEFS: RouteDef[] = [
   // South-east bound main road (from top left).
   {
     id: 'se-straight',
+    extend: OFF_SCREEN,
     lane: 'se-left',
     weight: 3,
     control: { signal: 3 },
@@ -44,6 +52,8 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
   {
     id: 'se-left-turn',
+    extend: OFF_SCREEN,
+    turn: 'left',
     lane: 'se-left',
     weight: 1,
     control: { signal: 3, arrow: 1 },
@@ -52,6 +62,7 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
   {
     id: 'se-right-lane',
+    extend: OFF_SCREEN,
     lane: 'se-right',
     weight: 1,
     control: { signal: 2 },
@@ -61,6 +72,8 @@ export const ROUTE_DEFS: RouteDef[] = [
   // Side road, coming in from the east.
   {
     id: 'side-right-turn',
+    extend: OFF_SCREEN,
+    turn: 'right',
     lane: 'side',
     weight: 2,
     control: { signal: 4, arrow: 2 },
@@ -69,6 +82,8 @@ export const ROUTE_DEFS: RouteDef[] = [
   },
   {
     id: 'side-left-turn',
+    extend: OFF_SCREEN,
+    turn: 'left',
     lane: 'side',
     weight: 1,
     control: { signal: 4 },

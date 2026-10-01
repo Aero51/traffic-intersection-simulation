@@ -3,13 +3,14 @@ import { SCENE_HEIGHT, SCENE_WIDTH, SIGNALS, TIPKALO } from './layout';
 import { Signal, createSignalDefs } from './signals';
 import { Simulation, type SimSnapshot } from './sim';
 import { createMenu } from './menu';
-import { createIntro } from './intro';
 import { Traffic } from './traffic';
 import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
-import { CarLayer } from './cars';
+import { CarLayer, createCarDefs } from './cars';
+import { Pedestrians } from './pedestrians';
+import { PedestrianLayer } from './pedestrian-layer';
+import { LoopLayer } from './loops';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const FLIP_MS = 800;
 
 function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string>, parent: Element) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -18,7 +19,7 @@ function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<strin
   return node;
 }
 
-function buildScene(container: HTMLElement) {
+function buildScene(container: HTMLElement, traffic: Traffic) {
   const svg = svgEl('svg', {
     viewBox: `0 0 ${SCENE_WIDTH} ${SCENE_HEIGHT}`,
     class: 'scene',
@@ -27,10 +28,21 @@ function buildScene(container: HTMLElement) {
   }, container);
 
   createSignalDefs(svg);
+  createCarDefs(svg);
+  svg.querySelector('defs')!.insertAdjacentHTML(
+    'beforeend',
+    `<radialGradient id="vignette" cx="0.5" cy="0.5" r="0.75">
+       <stop offset="0.55" stop-color="#000" stop-opacity="0"/>
+       <stop offset="1" stop-color="#000" stop-opacity="0.45"/>
+     </radialGradient>`,
+  );
 
   // Background at native size (1003x581); the 900x500 viewBox crops it like the JavaFX stage did.
-  svgEl('image', { href: '/raskrsce.webp', width: '1003', height: '581' }, svg);
+  svgEl('image', { href: '/raskrsce.webp', width: '1003', height: '581', class: 'photo' }, svg);
+  svgEl('rect', { width: String(SCENE_WIDTH), height: String(SCENE_HEIGHT), fill: 'url(#vignette)', 'pointer-events': 'none' }, svg);
 
+  const loopLayer = new LoopLayer(svgEl('g', { class: 'loops' }, svg), traffic.routes);
+  const pedestrianLayer = new PedestrianLayer(svgEl('g', { class: 'walkers' }, svg));
   const carLayer = new CarLayer(svgEl('g', { class: 'cars' }, svg));
 
   const tipkalo = svgEl('foreignObject', {
@@ -41,7 +53,7 @@ function buildScene(container: HTMLElement) {
   const layer = svgEl('g', { class: 'signals' }, svg);
   const signals = SIGNALS.map((p) => new Signal(layer, p));
 
-  return { svg, signals, carLayer };
+  return { svg, signals, carLayer, pedestrianLayer, loopLayer };
 }
 
 function render(signals: Signal[], snap: SimSnapshot): void {
@@ -58,17 +70,18 @@ function render(signals: Signal[], snap: SimSnapshot): void {
 }
 
 const stage = document.createElement('div');
-stage.className = 'stage is-intro';
+stage.className = 'stage';
 document.getElementById('app')!.appendChild(stage);
 
 const main = document.createElement('div');
 main.className = 'main';
 stage.appendChild(main);
 
-const { svg, signals, carLayer } = buildScene(main);
 const sim = new Simulation();
 const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS);
 for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, g.initial);
+const pedestrians = new Pedestrians();
+const { svg, signals, carLayer, pedestrianLayer, loopLayer } = buildScene(main, traffic);
 let automatic = false;
 
 // Phones get a second, finger-sized Tipkalo below the map.
@@ -83,6 +96,8 @@ let tipkaloPending = false;
 for (const button of tipkala) {
   button.addEventListener('click', () => {
     sim.requestPedestrians();
+    // People only come to the kerb if the request was accepted (not in "Policajac" mode).
+    if (sim.pedestrianRequestPending) pedestrians.call();
     renderTipkalo();
   });
 }
@@ -109,6 +124,7 @@ const menu = createMenu(main, {
   onTrafficChange: (id, cars) => traffic.setTarget(id, cars),
   onAutoChange: (enabled) => {
     automatic = enabled;
+    loopLayer.setVisible(enabled);
   },
 });
 vehicleSignals.forEach((s, i) => s.root.addEventListener('click', () => menu.select(i)));
@@ -123,9 +139,12 @@ function frame(now: number): void {
   if (!automatic || signalsShouldRun(sim.snapshot())) sim.advance(dt);
   const snap = sim.snapshot();
   traffic.step(dt, snap);
+  pedestrians.step(dt, snap);
   render(signals, snap);
   renderTipkalo();
   carLayer.render(traffic.cars);
+  pedestrianLayer.render(pedestrians.walkers);
+  if (automatic) loopLayer.render(traffic.occupiedLoops(snap));
   requestAnimationFrame(frame);
 }
 
@@ -139,20 +158,5 @@ function signalsShouldRun(snap: SimSnapshot): boolean {
   return changing || sim.pedestrianRequestPending || traffic.waitingAtRed(snap);
 }
 
-function start(): void {
-  last = performance.now();
-  requestAnimationFrame(frame);
-}
-
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const intro = createIntro(stage, () => {
-  const flip = reducedMotion ? 0 : FLIP_MS;
-  intro.classList.add('is-leaving');
-  setTimeout(() => {
-    intro.remove();
-    stage.classList.remove('is-intro');
-    if (flip) main.classList.add('is-entering');
-    start();
-    setTimeout(() => main.classList.remove('is-entering'), flip);
-  }, flip);
-});
+last = performance.now();
+requestAnimationFrame(frame);

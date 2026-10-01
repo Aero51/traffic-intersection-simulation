@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAR_LENGTH, MIN_GAP, Traffic, buildRoute, lightFor, type RouteDef } from './traffic';
+import { MAX_SPEED, MIN_GAP, Traffic, buildRoute, lightFor, type RouteDef } from './traffic';
 import { Simulation, type SimSnapshot } from './sim';
 import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
 
@@ -91,8 +91,8 @@ describe('Traffic', () => {
     run(traffic, 1.5, snapshot('red'));
     const second = traffic.spawn(route)!;
     run(traffic, 15, snapshot('red'));
-    expect(first.s - second.s).toBeGreaterThanOrEqual(CAR_LENGTH + MIN_GAP - 0.01);
-    expect(first.s - second.s).toBeLessThan(CAR_LENGTH + MIN_GAP + 2);
+    expect(first.s - second.s).toBeGreaterThanOrEqual(first.length + MIN_GAP - 0.01);
+    expect(first.s - second.s).toBeLessThan(first.length + MIN_GAP + 2);
   });
 
   it('does not spawn into a full entry', () => {
@@ -104,8 +104,8 @@ describe('Traffic', () => {
   it('drives through a late yellow but stops on an early one', () => {
     const traffic = manual([straight]);
     const near = traffic.spawn(traffic.routes[0])!;
-    run(traffic, 3.5, snapshot('green')); // close to the line at full speed
-    expect(near.s).toBeGreaterThan(185);
+    while (near.s < 180) traffic.step(1 / 60, snapshot('green')); // close to the line at full speed
+    expect(near.s).toBeLessThan(200);
     run(traffic, 2, snapshot('yellow'));
     expect(near.s).toBeGreaterThan(200);
 
@@ -125,7 +125,7 @@ describe('Traffic', () => {
     expect(a.s).toBeLessThanOrEqual(200); // straight car waits on red
     // The turning car is in the same lane and stuck behind it while their routes overlap.
     expect(b.s).toBeLessThan(a.s);
-    expect(a.s - b.s).toBeGreaterThanOrEqual(CAR_LENGTH + MIN_GAP - 0.01);
+    expect(a.s - b.s).toBeGreaterThanOrEqual(a.length + MIN_GAP - 0.01);
   });
 
   it('keeps the number of cars from a side at its slider value', () => {
@@ -155,6 +155,32 @@ describe('Traffic', () => {
     expect(traffic.waitingAtRed(snapshot('green'))).toBe(false);
   });
 
+  it('shows brake lights when stopping and indicators before a turn', () => {
+    const traffic = manual([straight, { ...branch, turn: 'right' }]);
+    const [r1, r2] = traffic.routes;
+    expect(r2.divergeAt).toBeGreaterThan(245);
+    expect(r2.divergeAt).toBeLessThan(255);
+
+    const cruising = traffic.spawn(r1)!;
+    run(traffic, 0.5, snapshot('green'));
+    expect(cruising.braking).toBe(false);
+    expect(cruising.indicator).toBeNull();
+    run(traffic, 10, snapshot('red'));
+    expect(cruising.braking).toBe(true);
+
+    const turning = manual([straight, { ...branch, turn: 'right' }]);
+    const car = turning.spawn(turning.routes[1])!;
+    run(turning, 0.5, snapshot('green'));
+    expect(car.indicator).toBe('right'); // within 220 px of the turn
+  });
+
+  it('slows down for a sharp corner', () => {
+    const r = buildRoute(branch);
+    expect(r.speed[100]).toBe(MAX_SPEED);
+    expect(r.speed[250]).toBeLessThan(MAX_SPEED / 2);
+    expect(r.speed[240]).toBeLessThan(MAX_SPEED);
+  });
+
   it('removes cars after they leave the route', () => {
     const traffic = manual([straight]);
     traffic.spawn(traffic.routes[0]);
@@ -176,11 +202,11 @@ describe('Traffic', () => {
       maxCars = Math.max(maxCars, traffic.cars.length);
       for (const a of traffic.cars) {
         for (const b of traffic.cars) {
-          if (a !== b && a.route === b.route && b.s > a.s) minGap = Math.min(minGap, b.s - a.s);
+          if (a !== b && a.route === b.route && b.s > a.s) minGap = Math.min(minGap, b.s - b.length - a.s);
         }
       }
     }
     expect(maxCars).toBeGreaterThan(5);
-    expect(minGap).toBeGreaterThanOrEqual(CAR_LENGTH + MIN_GAP - 0.01);
+    expect(minGap).toBeGreaterThanOrEqual(MIN_GAP - 0.01);
   });
 });
