@@ -146,8 +146,8 @@ function frame(now: number): void {
   last = now;
   if (!automatic || signalsShouldRun(sim.snapshot())) sim.advance(dt);
   const snap = sim.snapshot();
-  traffic.step(dt, snap);
-  pedestrians.step(dt, snap);
+  traffic.step(dt, snap, pedestrians.walkers);
+  pedestrians.step(dt, snap, (crossing) => !traffic.crosswalkBusy(crossing));
   render(signals, snap);
   renderTipkalo();
   carLayer.render(traffic.cars);

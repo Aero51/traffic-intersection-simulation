@@ -3,7 +3,7 @@ import { Traffic, pose, type Car } from './traffic';
 import { Simulation } from './sim';
 import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
 import { SCENE_HEIGHT, SCENE_WIDTH } from './layout';
-import { CROSSINGS } from './pedestrians';
+import { CROSSINGS, KERB, Pedestrians, walkerPose, type Walker } from './pedestrians';
 
 /** Is this car's centre on one of the striped crosswalks? */
 function onCrosswalk(car: Car): boolean {
@@ -134,5 +134,60 @@ describe('junction conflicts', () => {
     expect(crosswalkStops).toBe(0);
     expect(longestStop).toBeLessThan(60); // no gridlock or starvation: about a red phase at most
     expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(30); // cars per minute through
+  }, 120_000);
+});
+
+/** Is a walker (a circle of radius r) touching this car's body? */
+function hits(car: Car, w: Walker, r = 4): boolean {
+  const { x, y, angle } = pose(car.route, car.s - car.length / 2, car.length * 0.6);
+  const p = walkerPose(w);
+  const [dx, dy] = [p.x - x, p.y - y];
+  const along = Math.abs(dx * Math.cos(angle) + dy * Math.sin(angle));
+  const across = Math.abs(-dx * Math.sin(angle) + dy * Math.cos(angle));
+  return along < car.length / 2 + r && across < car.width / 2 + r;
+}
+
+describe('pedestrians on the crossings', () => {
+  it('cars stop for people on the road and drive on once they have crossed', () => {
+    let seed = 7;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const sim = new Simulation();
+    const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
+    for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 12);
+    const peds = new Pedestrians(random);
+    const dt = 1 / 30;
+    const minutes = 6;
+    let example = '';
+    let crossed = 0;
+    let longestStop = 0;
+    const stoppedFor = new Map<number, number>();
+    const seen = new Set<number>();
+    for (let i = 0; i < (minutes * 60) / dt; i++) {
+      if (i % Math.round(15 / dt) === 0) {
+        sim.requestPedestrians();
+        peds.call();
+      }
+      sim.advance(dt);
+      const snap = sim.snapshot();
+      traffic.step(dt, snap, peds.walkers);
+      const before = peds.walkers.length;
+      peds.step(dt, snap, (c) => !traffic.crosswalkBusy(c));
+      crossed += before - peds.walkers.length;
+      for (const c of traffic.cars) {
+        seen.add(c.id);
+        const stopped = c.v < 1 ? (stoppedFor.get(c.id) ?? 0) + dt : 0;
+        stoppedFor.set(c.id, stopped);
+        longestStop = Math.max(longestStop, stopped);
+      }
+      const onRoad = peds.walkers.filter((w) => w.t >= KERB);
+      for (const c of traffic.cars) {
+        const w = onRoad.find((w) => hits(c, w));
+        if (w && !example) example = `t=${sim.time.toFixed(1)} ${c.route.def.id}@${c.s.toFixed(0)} hit walker on ${w.crossing.id} t=${w.t.toFixed(2)}`;
+      }
+    }
+    expect(example).toBe('');
+    expect(crossed).toBeGreaterThan(40);
+    expect(longestStop).toBeLessThan(60);
+    expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(20);
   }, 120_000);
 });

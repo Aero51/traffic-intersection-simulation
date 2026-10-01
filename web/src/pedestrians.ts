@@ -36,6 +36,8 @@ export interface Walker {
 }
 
 const WAIT_AT = -0.07;
+/** Walkers wait here (fraction of the crossing) until it is safe to step onto the road. */
+export const KERB = -0.02;
 const MAX_WAITING_PER_KERB = 3;
 
 export const CLOTHES = ['#c62828', '#1565c0', '#2e7d32', '#f9a825', '#6a1b9a', '#37474f', '#ef6c00', '#00838f', '#eeeeee', '#5d4037'];
@@ -58,12 +60,17 @@ export class Pedestrians {
     }
   }
 
-  step(dt: number, snap: SimSnapshot): void {
+  /** `mayStepOut` says whether no car is on, or about to reach, a crossing. */
+  step(dt: number, snap: SimSnapshot, mayStepOut: (crossing: Crossing) => boolean = () => true): void {
     for (const w of this.walkers) {
       const green = w.crossing.lights.every((i) => snap.pedestrians[i].green);
       // Once on the road, keep going even if the light changes.
       if (!w.walking && green) w.walking = true;
-      if (w.walking) w.t += (w.speed * dt) / crossingLength(w.crossing);
+      if (!w.walking) continue;
+      let t = w.t + (w.speed * dt) / crossingLength(w.crossing);
+      // Wait at the kerb for a car that is already crossing (or can't stop in time).
+      if (w.t < KERB && t >= KERB && !mayStepOut(w.crossing)) t = Math.max(w.t, KERB - 1e-4);
+      w.t = t;
     }
     this.walkers = this.walkers.filter((w) => w.t < 1.08);
   }

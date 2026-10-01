@@ -4,6 +4,7 @@
 
 import type { SimSnapshot } from './sim';
 import { SCENE_HEIGHT, SCENE_WIDTH } from './layout';
+import { CROSSINGS, KERB, crossingLength, type Crossing, type Walker } from './pedestrians';
 
 export type Point = [number, number];
 export type Segment = ['L', number, number] | ['C', number, number, number, number, number, number];
@@ -59,6 +60,15 @@ export interface Conflict {
   join: [number, number];
   /** Cars on this route give way to cars on the other at a crossing. */
   yields: boolean;
+}
+
+/** Where a route drives over a pedestrian crossing. */
+export interface CrosswalkZone {
+  crossing: Crossing;
+  /** Stretch of the route on the stripes. */
+  at: [number, number];
+  /** Stretch of the crossing (distance from its kerb a) the cars' bodies cover. */
+  u: [number, number];
 }
 
 /** Cars entering from one side of the map, shared between that side's lanes. */
@@ -140,6 +150,15 @@ const GAP_TIME = 2.2;
  * physically free (like a driver nosing out), so it can't be starved by endless traffic.
  */
 const PATIENCE = 8;
+
+/** Route points this far beyond the stripes (car's front corners) already count as on them. */
+const CROSSWALK_MARGIN = 4;
+/** Half a car's width plus a little: how much of the crossing a passing car covers. */
+const CROSSWALK_BODY = 12;
+/** Cars stop this far before the stripes when people are crossing. */
+const CROSSWALK_STOP = 6;
+/** A walker this far past a car's path no longer holds it. */
+const CROSSWALK_PASSED = 6;
 
 /** How far before its stop line a waiting car is picked up by the induction loop. */
 export const LOOP_LENGTH = 50;
@@ -358,6 +377,9 @@ export class Traffic {
   readonly routes: Route[];
   cars: Car[] = [];
   readonly conflicts = new Map<Route, Conflict[]>();
+  readonly crosswalks = new Map<Route, CrosswalkZone[]>();
+  /** People crossing the road, passed in each step. */
+  private walkers: readonly Walker[] = [];
   private nextId = 1;
   private shared = new Map<Route, Map<Route, number>>();
   private spawnTimers = new Map<string, number>();
@@ -373,8 +395,10 @@ export class Traffic {
     defs: RouteDef[],
     private groups: TrafficGroup[],
     private random: () => number = Math.random,
+    crossings: Crossing[] = CROSSINGS,
   ) {
     this.routes = defs.map(buildRoute);
+    for (const r of this.routes) this.crosswalks.set(r, crossings.flatMap((c) => findCrosswalks(r, c)));
     for (const a of this.routes) {
       const m = new Map<Route, number>();
       for (const b of this.routes) {
@@ -472,7 +496,23 @@ export class Traffic {
     return car;
   }
 
-  step(dt: number, snap: SimSnapshot): void {
+  /**
+   * Is it unsafe to step onto this crossing? True while a car is on the stripes, or is
+   * about to reach them too fast to stop comfortably.
+   */
+  crosswalkBusy(crossing: Crossing): boolean {
+    return this.cars.some((car) =>
+      this.crosswalks.get(car.route)!.some(
+        (z) =>
+          z.crossing === crossing &&
+          car.s - car.length < z.at[1] &&
+          car.s + (car.v * car.v) / (2 * BRAKE) > z.at[0] - CROSSWALK_STOP / 2,
+      ),
+    );
+  }
+
+  step(dt: number, snap: SimSnapshot, walkers: readonly Walker[] = []): void {
+    this.walkers = walkers;
     if (dt <= 0) return;
     const steps = Math.ceil(dt / MAX_STEP - 1e-9);
     for (let i = 0; i < steps; i++) this.substep(dt / steps, snap);
@@ -537,7 +577,7 @@ export class Traffic {
 
   /** Distance this car may still travel before it has to be stopped. */
   private limitFor(car: Car, snap: SimSnapshot): number {
-    const limit = Math.min(this.roomAhead(car.route, car.s, car), this.exitRoom(car));
+    const limit = Math.min(this.roomAhead(car.route, car.s, car), this.exitRoom(car), this.crosswalkRoom(car));
     car.yielding = false;
     if (car.cleared) return Math.min(limit, this.mergeSafety(car)); // committed: only the car in front matters now
 
@@ -601,6 +641,19 @@ export class Traffic {
       clearUntil = Math.max(clearUntil, z.at[1]);
     }
     return this.queueRoom(car) >= clearUntil - car.s + car.length ? 'go' : 'no room';
+  }
+
+  /**
+   * Room before the next crosswalk while someone on it still has to cross this car's path.
+   * Once the car's front is on the stripes it carries on (walkers wait for it instead).
+   */
+  private crosswalkRoom(car: Car): number {
+    let room = Infinity;
+    for (const z of this.crosswalks.get(car.route)!) {
+      if (car.s > z.at[0] - CROSSWALK_STOP + 0.5) continue;
+      if (this.walkers.some((w) => walkerInPath(w, z))) room = Math.min(room, z.at[0] - CROSSWALK_STOP - car.s);
+    }
+    return Math.max(0, room);
   }
 
   /**
@@ -701,4 +754,36 @@ export class Traffic {
 /** Where a car's claim on a zone ends: the end of a crossing, or just past a merge's join. */
 function claimEnd(z: Conflict): number {
   return z.kind === 'cross' ? z.at[1] : z.join[0] + JOIN_MARGIN;
+}
+
+/** Stretches of a route that run over a crossing's stripes. */
+function findCrosswalks(route: Route, crossing: Crossing): CrosswalkZone[] {
+  const len = crossingLength(crossing);
+  const [ax, ay] = crossing.a;
+  const ux = (crossing.b[0] - ax) / len;
+  const uy = (crossing.b[1] - ay) / len;
+  const out: CrosswalkZone[] = [];
+  let zone: CrosswalkZone | null = null;
+  for (let i = 0; i <= route.length; i++) {
+    const dx = route.points[2 * i] - ax;
+    const dy = route.points[2 * i + 1] - ay;
+    const u = dx * ux + dy * uy;
+    const across = Math.abs(-dx * uy + dy * ux);
+    if (u >= 0 && u <= len && across <= crossing.halfWidth + CROSSWALK_MARGIN) {
+      if (!zone) out.push((zone = { crossing, at: [i, i], u: [u, u] }));
+      zone.at[1] = i;
+      zone.u = [Math.min(zone.u[0], u), Math.max(zone.u[1], u)];
+    } else {
+      zone = null;
+    }
+  }
+  for (const z of out) z.u = [z.u[0] - CROSSWALK_BODY, z.u[1] + CROSSWALK_BODY];
+  return out;
+}
+
+/** Is this walker on the road and not yet past the cars' path over the crossing? */
+function walkerInPath(w: Walker, z: CrosswalkZone): boolean {
+  if (w.crossing !== z.crossing || !w.walking || w.t < KERB || w.t > 1) return false;
+  const len = crossingLength(w.crossing);
+  return w.reverse ? (1 - w.t) * len > z.u[0] - CROSSWALK_PASSED : w.t * len < z.u[1] + CROSSWALK_PASSED;
 }
