@@ -2,6 +2,7 @@ import './style.css';
 import { SCENE_HEIGHT, SCENE_WIDTH, SIGNALS, TIPKALO } from './layout';
 import { Signal, createSignalDefs } from './signals';
 import { Simulation, type SimSnapshot } from './sim';
+import { createMenu } from './menu';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -51,11 +52,24 @@ function render(signals: Signal[], snap: SimSnapshot): void {
   });
 }
 
-const app = document.getElementById('app')!;
-const { svg, signals } = buildScene(app);
+const stage = document.createElement('div');
+stage.className = 'stage';
+document.getElementById('app')!.appendChild(stage);
+
+const { svg, signals } = buildScene(stage);
 const sim = new Simulation();
 
 svg.querySelector('.tipkalo')!.addEventListener('click', () => sim.requestPedestrians());
+
+const vehicleSignals = signals.filter((s) => s.placement.kind === 'vehicle');
+const menu = createMenu(stage, {
+  timing: (i) => sim.timing(i),
+  onModeChange: (mode) => sim.setMode(mode),
+  onApply: (i, timing) => sim.applyTiming(i, timing),
+  // The original scaled the selected signal to 2x (listenerPromjeneSemafora).
+  onSelect: (i) => vehicleSignals.forEach((s, j) => s.setSelected(j === i)),
+});
+vehicleSignals.forEach((s, i) => s.root.addEventListener('click', () => menu.select(i)));
 
 let last = performance.now();
 function frame(now: number): void {
