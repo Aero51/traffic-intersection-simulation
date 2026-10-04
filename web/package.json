@@ -9,12 +9,14 @@
     "preview": "vite preview",
     "test": "vitest run",
     "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format:check": "prettier --check src",
+    "train": "vite-node scripts/train-policy.ts --"
   },
   "devDependencies": {
     "prettier": "^3.9.9",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
+    "vite-node": "^6.0.0",
     "vitest": "^5.0.3"
   }
 }

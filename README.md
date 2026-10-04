@@ -10,16 +10,26 @@ originally as a final-year project. The repository holds two versions:
 
 ## Web version
 
-Features: fixed-time, induction-loop (automatic), actuated and queue-based control, pedestrian phases,
-buses / lorries / motorbikes / ambulance, day–night cycle with rush hours, rain, statistics and
-charts, level-of-service grades, timing safety check, best-timings search, scenario presets and JSON save/load, CSV export, Croatian/English UI, and settings
-shareable through the URL.
+Features:
+
+- **Control:** fixed-time, induction-loop (automatic), actuated, longest-queue, bus-priority and a
+  learned (Q-learning) policy; pedestrian phases and an ambulance that pre-empts the signals.
+- **Traffic:** cars, vans, buses, lorries, motorbikes and bicycles with per-driver differences;
+  day–night cycle with rush hours, rain, and breakdowns that block a lane.
+- **Analysis:** statistics and charts, level-of-service grades (A–F), a fuel/CO₂ estimate, a
+  strategy comparison, a timing safety check and a best-timings search that is checked against
+  Webster's formula; CSV export.
+- **Scenarios:** ready-made presets, JSON save/load, and settings shareable through the URL.
+- **Replay:** rewind and scrub through the last minute (Y).
+- Croatian/English UI, installable as a PWA.
 
 ```sh
 cd web
 npm ci
 npm run dev      # development server
 npm test         # unit tests (vitest)
+npm run format   # Prettier (CI runs format:check)
+npm run train    # retrain the learned control policy (src/learned-policy.ts)
 npm run build    # type-check + production build into web/dist
 ```
 

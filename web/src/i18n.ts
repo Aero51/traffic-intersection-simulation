@@ -62,6 +62,7 @@ const STRINGS = {
   'control.demand': { hr: 'Na zahtjev (petlje)', en: 'On demand (loops)' },
   'control.actuated': { hr: 'Prilagodljivo', en: 'Actuated' },
   'control.queue': { hr: 'Najdulja kolona', en: 'Longest queue' },
+  'control.learned': { hr: 'Naučeno (učenje pojačanjem)', en: 'Learned (reinforcement)' },
   'control.transit': { hr: 'Prednost autobusima', en: 'Bus priority' },
   'control.hint': {
     hr: 'Fiksni: ciklus uvijek teče. Na zahtjev: stoji dok nitko ne čeka na crvenom. Prilagodljivo: zeleno se produljuje dok vozila pristižu, a skraćuje kad ih nema. Najdulja kolona: zeleno dobiva cesta s više vozila koja čekaju. Prednost autobusima: kao najdulja kolona, ali se zeleno drži ili skraćuje da autobus prođe bez čekanja.',
