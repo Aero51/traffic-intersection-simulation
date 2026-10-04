@@ -49,7 +49,11 @@ const PANELS: PanelSpec[] = [
 const HEIGHT = 108;
 const MARGIN = { left: 36, right: 50, top: 8, bottom: 6, bottomLast: 22 };
 
-function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent?: Element): SVGElementTagNameMap[K] {
+function el<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  attrs: Record<string, string | number>,
+  parent?: Element,
+): SVGElementTagNameMap[K] {
   const node = document.createElementNS(SVG_NS, tag);
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
   parent?.appendChild(node);
@@ -151,7 +155,11 @@ export function createChartDialog(stats: Stats): { open(): void; toggle(): void;
       const row = html('div', 'chart-tip-row');
       const key = el('svg', { class: 'chart-key', width: 14, height: 8, 'aria-hidden': 'true' });
       el('line', { x1: 1, x2: 13, y1: 4, y2: 4, class: `chart-line ${s.entity}` }, key);
-      row.append(key, html('strong', 'chart-tip-value', v === null ? '–' : format(source.spec, v)), html('span', 'chart-tip-label', t(s.label)));
+      row.append(
+        key,
+        html('strong', 'chart-tip-value', v === null ? '–' : format(source.spec, v)),
+        html('span', 'chart-tip-label', t(s.label)),
+      );
       tip.appendChild(row);
     }
     tip.hidden = false;
@@ -203,12 +211,23 @@ export function createChartDialog(stats: Stats): { open(): void; toggle(): void;
     const x = (sec: number) => plotLeft + (sec / xMax) * (plotRight - plotLeft);
     const y = (v: number) => plotBottom - (v / scale.max) * (plotBottom - plotTop);
 
-    const svg = el('svg', { class: 'chart-svg', width, height, viewBox: `0 0 ${width} ${height}`, role: 'img', tabindex: 0, 'aria-label': `${t(spec.title)}. ${t('chart.keys')}` });
+    const svg = el('svg', {
+      class: 'chart-svg',
+      width,
+      height,
+      viewBox: `0 0 ${width} ${height}`,
+      role: 'img',
+      tabindex: 0,
+      'aria-label': `${t(spec.title)}. ${t('chart.keys')}`,
+    });
     section.appendChild(svg);
 
     // Gridlines (hairline, solid) with round y labels; the baseline is a touch stronger.
     for (let v = 0; v <= scale.max + 1e-9; v += scale.step) {
-      el('line', { x1: plotLeft, x2: plotRight, y1: y(v), y2: y(v), class: v === 0 ? 'chart-axis' : 'chart-grid' }, svg).setAttribute('shape-rendering', 'crispEdges');
+      el('line', { x1: plotLeft, x2: plotRight, y1: y(v), y2: y(v), class: v === 0 ? 'chart-axis' : 'chart-grid' }, svg).setAttribute(
+        'shape-rendering',
+        'crispEdges',
+      );
       el('text', { x: plotLeft - 6, y: y(v) + 3.5, class: 'chart-tick chart-tick-y' }, svg).textContent = num(v, scale.step < 1 ? 1 : 0);
     }
     if (last) {
@@ -238,12 +257,23 @@ export function createChartDialog(stats: Stats): { open(): void; toggle(): void;
           continue;
         }
         const path = `M${r.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' L')}`;
-        if (spec.area) el('path', { d: `${path} L${r[r.length - 1][0].toFixed(1)},${plotBottom} L${r[0][0].toFixed(1)},${plotBottom} Z`, class: `chart-area ${s.entity}` }, svg);
+        if (spec.area)
+          el(
+            'path',
+            {
+              d: `${path} L${r[r.length - 1][0].toFixed(1)},${plotBottom} L${r[0][0].toFixed(1)},${plotBottom} Z`,
+              class: `chart-area ${s.entity}`,
+            },
+            svg,
+          );
         el('path', { d: path, class: `chart-line ${s.entity}` }, svg);
       }
       const end = runs.length ? runs[runs.length - 1][runs[runs.length - 1].length - 1] : null;
       if (end) {
-        const lastValue = [...samples].reverse().map((p) => s.value(p)).find((v) => v !== null)!;
+        const lastValue = [...samples]
+          .reverse()
+          .map((p) => s.value(p))
+          .find((v) => v !== null)!;
         ends.push({ entity: s.entity, cx: end[0], cy: end[1], text: format(spec, lastValue) });
       }
     }

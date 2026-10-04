@@ -5,8 +5,21 @@
 import type { SimSnapshot } from './sim';
 import { CROSSINGS, type Crossing, type Walker } from './pedestrians';
 import {
-  BRAKE, JOIN_MARGIN, MAX_SPEED, buildRoute, claimEnd, findConflicts, findCrosswalks, priority, sharedPrefix, walkerInPath,
-  type Conflict, type Control, type CrosswalkZone, type Route, type RouteDef,
+  BRAKE,
+  JOIN_MARGIN,
+  MAX_SPEED,
+  buildRoute,
+  claimEnd,
+  findConflicts,
+  findCrosswalks,
+  priority,
+  sharedPrefix,
+  walkerInPath,
+  type Conflict,
+  type Control,
+  type CrosswalkZone,
+  type Route,
+  type RouteDef,
 } from './geometry';
 
 export { MAX_SPEED, buildRoute, pose } from './geometry';
@@ -49,8 +62,7 @@ export const EXTRA_VEHICLE_TYPES: VehicleType[] = [
 export const AMBULANCE: VehicleType = { kind: 'ambulance', length: 48, width: 20, weight: 0 };
 
 /** Why a car is going slower than it could (for the "follow a car" label). */
-export type CarStatus =
-  | 'free' | 'curve' | 'start' | 'red' | 'yellow' | 'queue' | 'yield' | 'blocked' | 'crosswalk' | 'merge' | 'stalled';
+export type CarStatus = 'free' | 'curve' | 'start' | 'red' | 'yellow' | 'queue' | 'yield' | 'blocked' | 'crosswalk' | 'merge' | 'stalled';
 
 /** A car crossing its stop line, for the statistics. */
 export interface PassEvent {
@@ -150,8 +162,20 @@ const INDICATE_BEFORE = 220;
 const INDICATE_AFTER = 120;
 
 export const CAR_COLORS = [
-  '#b71c1c', '#0d47a1', '#eceff1', '#eceff1', '#212121', '#263238', '#9e9e9e', '#78909c',
-  '#f9a825', '#1b5e20', '#4e342e', '#e65100', '#1565c0', '#cfd8dc',
+  '#b71c1c',
+  '#0d47a1',
+  '#eceff1',
+  '#eceff1',
+  '#212121',
+  '#263238',
+  '#9e9e9e',
+  '#78909c',
+  '#f9a825',
+  '#1b5e20',
+  '#4e342e',
+  '#e65100',
+  '#1565c0',
+  '#cfd8dc',
 ];
 
 // ------------------------------------------------------------------ signals
@@ -204,7 +228,11 @@ export class Traffic {
     crossings: Crossing[] = CROSSINGS,
   ) {
     this.routes = defs.map(buildRoute);
-    for (const r of this.routes) this.crosswalks.set(r, crossings.flatMap((c) => findCrosswalks(r, c)));
+    for (const r of this.routes)
+      this.crosswalks.set(
+        r,
+        crossings.flatMap((c) => findCrosswalks(r, c)),
+      );
     for (const a of this.routes) {
       const m = new Map<Route, number>();
       for (const b of this.routes) {
@@ -227,9 +255,9 @@ export class Traffic {
     for (const [a, list] of this.conflicts) {
       for (const c of list) {
         if (c.kind !== 'cross' || c.key.includes('#')) continue;
-        const twin = this.conflicts.get(c.other)!.find(
-          (d) => d.kind === 'cross' && d.other === a && d.at[0] <= c.otherAt[1] && c.otherAt[0] <= d.at[1] && !d.key.includes('#'),
-        );
+        const twin = this.conflicts
+          .get(c.other)!
+          .find((d) => d.kind === 'cross' && d.other === a && d.at[0] <= c.otherAt[1] && c.otherAt[0] <= d.at[1] && !d.key.includes('#'));
         c.key = `${c.key}#${n}`;
         if (twin) twin.key = c.key;
         n++;
@@ -284,7 +312,9 @@ export class Traffic {
 
   /** Buses within `distance` px before their stop line in these lanes (moving or not). */
   busesApproaching(lanes: readonly string[], distance: number): number {
-    return this.cars.filter((c) => c.kind === 'bus' && lanes.includes(c.route.def.lane) && !c.passedLine && c.route.stopAt - c.s <= distance).length;
+    return this.cars.filter(
+      (c) => c.kind === 'bus' && lanes.includes(c.route.def.lane) && !c.passedLine && c.route.stopAt - c.s <= distance,
+    ).length;
   }
 
   /** An ambulance that has not yet got through the junction, if any. */
@@ -340,9 +370,16 @@ export class Traffic {
     const type = forced ?? this.pick(types.map((t) => [t, t.weight] as const));
     const emergency = type.kind === 'ambulance';
     // Per-driver differences (only drawn when enabled, so seeded runs stay comparable).
-    const d = this.options.drivers && !emergency
-      ? { speed: 0.86 + this.random() * 0.2, accel: 0.75 + this.random() * 0.5, gap: 1 + this.random() * 0.7, reaction: 0.25 + this.random() * 0.65, bold: this.random() < 0.25 }
-      : { speed: 1, accel: 1, gap: 1, reaction: 0, bold: false };
+    const d =
+      this.options.drivers && !emergency
+        ? {
+            speed: 0.86 + this.random() * 0.2,
+            accel: 0.75 + this.random() * 0.5,
+            gap: 1 + this.random() * 0.7,
+            reaction: 0.25 + this.random() * 0.65,
+            bold: this.random() < 0.25,
+          }
+        : { speed: 1, accel: 1, gap: 1, reaction: 0, bold: false };
     const maxV = Math.min(MAX_SPEED * 1.05, MAX_SPEED * (type.speed ?? 1) * d.speed);
     const car: Car = {
       id: this.nextId++,
@@ -383,12 +420,11 @@ export class Traffic {
    */
   crosswalkBusy(crossing: Crossing): boolean {
     return this.cars.some((car) =>
-      this.crosswalks.get(car.route)!.some(
-        (z) =>
-          z.crossing === crossing &&
-          car.s - car.length < z.at[1] &&
-          car.s + this.stopping(car.v) > z.at[0] - CROSSWALK_STOP / 2,
-      ),
+      this.crosswalks
+        .get(car.route)!
+        .some(
+          (z) => z.crossing === crossing && car.s - car.length < z.at[1] && car.s + this.stopping(car.v) > z.at[0] - CROSSWALK_STOP / 2,
+        ),
     );
   }
 

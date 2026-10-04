@@ -54,9 +54,7 @@ export function analyzeTimeline(timeline: Timeline): SafetyIssue[] {
     return false;
   };
   const overlap = mainOpen.map((m, i) => m && sideOpen[i]);
-  const tight = mainOpen.map(
-    (m, i) => !overlap[i] && ((sideOpen[i] && recently(mainOpen, i)) || (m && recently(sideOpen, i))),
-  );
+  const tight = mainOpen.map((m, i) => !overlap[i] && ((sideOpen[i] && recently(mainOpen, i)) || (m && recently(sideOpen, i))));
   const round = (s: number) => Math.round(s * 100) / 100;
   const overlaps = runs(overlap).map(([from, to]) => ({ kind: 'overlap' as const, from: round(from), to: round(to) }));
   const issues: SafetyIssue[] = [...overlaps];

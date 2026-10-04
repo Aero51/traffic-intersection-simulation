@@ -39,12 +39,16 @@ export function createStatsPanel(
         <th scope="col" data-i18n="stats.trend"></th>
       </tr></thead>
       <tbody>
-        ${stats.approaches.map((a) => `
+        ${stats.approaches
+          .map(
+            (a) => `
           <tr data-id="${a.id}">
             <th scope="row" data-i18n="stats.${a.id}"></th>
             <td class="flow"></td><td class="wait"></td><td class="queue"></td>
             <td><svg class="spark" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" aria-hidden="true"></svg></td>
-          </tr>`).join('')}
+          </tr>`,
+          )
+          .join('')}
         <tr class="total"><th scope="row" data-i18n="stats.total"></th><td class="flow"></td><td class="wait"></td><td class="queue"></td><td></td></tr>
       </tbody>
     </table>
@@ -104,4 +108,3 @@ export function createStatsPanel(
   onLangChange(render);
   return { render };
 }
-

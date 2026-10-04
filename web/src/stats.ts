@@ -132,7 +132,10 @@ export class Stats {
       a.maxQueue = Math.max(a.maxQueue, a.queue);
       while (a.recent.length && a.recent[0] < this.time - WINDOW) a.recent.shift();
     }
-    this.maxTotalQueue = Math.max(this.maxTotalQueue, this.approaches.reduce((n, a) => n + a.queue, 0));
+    this.maxTotalQueue = Math.max(
+      this.maxTotalQueue,
+      this.approaches.reduce((n, a) => n + a.queue, 0),
+    );
     this.seriesTimer += dt;
     if (this.seriesTimer >= SERIES_EVERY) {
       this.seriesTimer -= SERIES_EVERY;

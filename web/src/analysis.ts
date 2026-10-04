@@ -55,12 +55,14 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
             <th scope="col" data-i18n="bench.co2" data-i18n-title="bench.co2.hint"></th>
             <th scope="col"><span class="visually-hidden" data-i18n="bench.use"></span></th>
           </tr></thead>
-          <tbody>${CONTROL_STRATEGIES.map((s) => `
+          <tbody>${CONTROL_STRATEGIES.map(
+            (s) => `
             <tr data-strategy="${s}">
               <th scope="row" data-i18n="control.${s}"></th>
               <td colspan="7"><div class="bench-progress"><div></div></div></td>
               <td><button type="button" class="bench-use" data-i18n="bench.use" disabled></button></td>
-            </tr>`).join('')}
+            </tr>`,
+          ).join('')}
           </tbody>
         </table>
       </div>
@@ -275,9 +277,15 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
     optBody.replaceChildren(
       cells(t('opt.current'), current[0].open, current[4].open, current[0].open + current[0].closed + 3, result.baseline.result),
       cells(t('opt.best'), best.main, best.side, best.cycle, result.best.result),
-      cells(t('opt.webster'), result.webster.candidate.main, result.webster.candidate.side, result.webster.candidate.cycle, result.webster.result),
+      cells(
+        t('opt.webster'),
+        result.webster.candidate.main,
+        result.webster.candidate.side,
+        result.webster.candidate.cycle,
+        result.webster.result,
+      ),
     );
-    
+
     optBody.children[1].classList.toggle('is-best', result.worthIt);
     const pct = num(Math.abs(result.improvement) * 100, 0);
     optVerdict.textContent = result.worthIt

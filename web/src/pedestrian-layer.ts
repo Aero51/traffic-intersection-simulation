@@ -41,7 +41,10 @@ export class PedestrianLayer {
         node.g.classList.toggle('is-walking', w.walking);
       }
       const { x, y, angle } = walkerPose(w);
-      node.g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${((angle * 180) / Math.PI).toFixed(1)}) scale(${SCALE})`);
+      node.g.setAttribute(
+        'transform',
+        `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${((angle * 180) / Math.PI).toFixed(1)}) scale(${SCALE})`,
+      );
     }
     for (const [id, node] of this.nodes) {
       if (!alive.has(id)) {

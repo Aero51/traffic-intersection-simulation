@@ -15,7 +15,19 @@ const config: BenchConfig = {
 };
 
 const result = (delay: number): BenchResult => ({
-  strategy: 'fixed', throughput: 50, avgWait: delay, maxWait: delay * 3, maxQueue: 6, pedAvgWait: delay, pedMaxWait: delay * 3, passed: 100, busAvgWait: delay, co2PerCar: 100, critical: { main: 10, side: 5 }, delay, users: 100,
+  strategy: 'fixed',
+  throughput: 50,
+  avgWait: delay,
+  maxWait: delay * 3,
+  maxQueue: 6,
+  pedAvgWait: delay,
+  pedMaxWait: delay * 3,
+  passed: 100,
+  busAvgWait: delay,
+  co2PerCar: 100,
+  critical: { main: 10, side: 5 },
+  delay,
+  users: 100,
 });
 
 describe('candidate timings', () => {
@@ -37,7 +49,7 @@ describe('candidate timings', () => {
     }
   });
 
-  it('describe the existing plans\' shape: signal 1-4 identical, signal 5 the side road', () => {
+  it("describe the existing plans' shape: signal 1-4 identical, signal 5 the side road", () => {
     const t = timingsFor({ cycle: 23, main: 10, side: 5 });
     expect(t.slice(0, 4)).toEqual(Array(4).fill({ open: 10, closed: 10 }));
     expect(t[4]).toEqual({ open: 5, closed: 12 });
@@ -94,12 +106,12 @@ describe('search', () => {
   });
 
   it('works on the real simulation (short runs)', async () => {
-    const out = await optimize(
-      { ...config, pedestrianRate: 0 },
-      'fixed',
-      async (c, s) => runBench(c, s),
-      { cycles: [17, 20], coarse: { seeds: [1], minutes: 1 }, fine: { seeds: [2, 3], minutes: 1 }, finalists: 1 },
-    );
+    const out = await optimize({ ...config, pedestrianRate: 0 }, 'fixed', async (c, s) => runBench(c, s), {
+      cycles: [17, 20],
+      coarse: { seeds: [1], minutes: 1 },
+      fine: { seeds: [2, 3], minutes: 1 },
+      finalists: 1,
+    });
     expect(out.baseline.delay).toBeGreaterThan(0);
     expect(out.best.delay).toBeGreaterThan(0);
     expect(checkTimings('normal', timingsFor(out.best.candidate))).toEqual([]);

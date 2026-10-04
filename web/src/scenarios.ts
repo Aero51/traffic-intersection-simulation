@@ -7,7 +7,10 @@ import { MAX_CARS, TRAFFIC_GROUPS } from './routes';
 import { checkTimings } from './safety';
 import type { Mode, Plan, SignalTiming } from './sim';
 
-export type ScenarioSettings = Pick<Settings, 'mode' | 'control' | 'cars' | 'pedestrians' | 'variety' | 'drivers' | 'dayCycle' | 'night' | 'weather'>;
+export type ScenarioSettings = Pick<
+  Settings,
+  'mode' | 'control' | 'cars' | 'pedestrians' | 'variety' | 'drivers' | 'dayCycle' | 'night' | 'weather'
+>;
 
 export interface Preset {
   id: string;
@@ -59,7 +62,7 @@ const isCount = (v: unknown, max: number): v is number => Number.isInteger(v) &&
 export function parseScenario(text: string): Scenario {
   let data: unknown;
   try {
-    data = JSON.parse(text.replace(/^\uFEFF/, ""));
+    data = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch {
     throw new Error('not JSON');
   }
@@ -73,7 +76,8 @@ export function parseScenario(text: string): Scenario {
     for (const g of TRAFFIC_GROUPS) if (isCount(src.cars[g.id], MAX_CARS)) base.cars[g.id] = src.cars[g.id] as number;
   }
   if (isCount(src.pedestrians, MAX_PEDESTRIAN_RATE)) base.pedestrians = src.pedestrians;
-  for (const key of ['variety', 'drivers', 'dayCycle', 'night'] as const) if (typeof src[key] === 'boolean') base[key] = src[key] as boolean;
+  for (const key of ['variety', 'drivers', 'dayCycle', 'night'] as const)
+    if (typeof src[key] === 'boolean') base[key] = src[key] as boolean;
   if (src.weather === 'dry' || src.weather === 'rain') base.weather = src.weather;
 
   const timings: Scenario['timings'] = {};
@@ -81,7 +85,16 @@ export function parseScenario(text: string): Scenario {
     for (const plan of ['normal', 'secondary'] as const) {
       const list = data.timings[plan];
       if (!Array.isArray(list) || list.length !== 5) continue;
-      const ok = list.every((x) => isObject(x) && Number.isInteger(x.open) && Number.isInteger(x.closed) && (x.open as number) >= 1 && (x.closed as number) >= 1 && (x.open as number) <= 99 && (x.closed as number) <= 99);
+      const ok = list.every(
+        (x) =>
+          isObject(x) &&
+          Number.isInteger(x.open) &&
+          Number.isInteger(x.closed) &&
+          (x.open as number) >= 1 &&
+          (x.closed as number) >= 1 &&
+          (x.open as number) <= 99 &&
+          (x.closed as number) <= 99,
+      );
       if (!ok) continue;
       const parsed = list.map((x) => ({ open: x.open as number, closed: x.closed as number }));
       if (checkTimings(plan, parsed).length === 0) timings[plan] = parsed;

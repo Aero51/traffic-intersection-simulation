@@ -301,7 +301,10 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
       g.innerHTML =
         `<text x="0" y="${y + TL_ROW - 1.5}" class="tl-label">${i + 1}</text>` +
         row
-          .map((seg) => `<rect x="${(TL_LABEL + seg.from * scale).toFixed(2)}" y="${y}" width="${Math.max(0.5, (seg.to - seg.from) * scale).toFixed(2)}" height="${TL_ROW}" fill="${LAMP_FILL[seg.lamps] ?? '#ccc'}"><title>${seg.from.toFixed(0)}–${seg.to.toFixed(0)} s</title></rect>`)
+          .map(
+            (seg) =>
+              `<rect x="${(TL_LABEL + seg.from * scale).toFixed(2)}" y="${y}" width="${Math.max(0.5, (seg.to - seg.from) * scale).toFixed(2)}" height="${TL_ROW}" fill="${LAMP_FILL[seg.lamps] ?? '#ccc'}"><title>${seg.from.toFixed(0)}–${seg.to.toFixed(0)} s</title></rect>`,
+          )
           .join('');
       svg.appendChild(g);
     });

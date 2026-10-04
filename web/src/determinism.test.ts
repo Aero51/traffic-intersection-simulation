@@ -18,7 +18,8 @@ function run(seed: number, strategy: ControlStrategy, seconds: number, check?: (
   return world;
 }
 
-const fingerprint = (w: World) => JSON.stringify([w.stats.summary(), w.traffic.cars.map((c) => [c.id, c.kind, +c.s.toFixed(3), +c.v.toFixed(3)])]);
+const fingerprint = (w: World) =>
+  JSON.stringify([w.stats.summary(), w.traffic.cars.map((c) => [c.id, c.kind, +c.s.toFixed(3), +c.v.toFixed(3)])]);
 
 describe('determinism', () => {
   it('the same seed gives exactly the same run', () => {

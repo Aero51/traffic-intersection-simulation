@@ -127,7 +127,7 @@ describe('modes', () => {
 });
 
 describe('applyTiming ("Prihvati")', () => {
-  it('keeps the edited signal at the reference signal\'s cycle position and lights it immediately', () => {
+  it("keeps the edited signal at the reference signal's cycle position and lights it immediately", () => {
     const sim = new Simulation();
     at(sim, 5);
     sim.applyTiming(0, { open: 4, closed: 16 });

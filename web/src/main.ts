@@ -35,12 +35,16 @@ function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<strin
 }
 
 function buildScene(container: HTMLElement, traffic: Traffic) {
-  const svg = svgEl('svg', {
-    viewBox: `0 0 ${SCENE_WIDTH} ${SCENE_HEIGHT}`,
-    class: 'scene',
-    role: 'img',
-    'data-i18n-aria': 'scene.label',
-  }, container);
+  const svg = svgEl(
+    'svg',
+    {
+      viewBox: `0 0 ${SCENE_WIDTH} ${SCENE_HEIGHT}`,
+      class: 'scene',
+      role: 'img',
+      'data-i18n-aria': 'scene.label',
+    },
+    container,
+  );
 
   createSignalDefs(svg);
   createCarDefs(svg);
@@ -66,9 +70,17 @@ function buildScene(container: HTMLElement, traffic: Traffic) {
   const carLayer = new CarLayer(carGroup, lightsLayer);
   const debugGroup = svgEl('g', { class: 'debug' }, svg);
 
-  const tipkalo = svgEl('foreignObject', {
-    x: String(TIPKALO.x), y: String(TIPKALO.y), width: '80', height: '28', class: 'tipkalo-wrap',
-  }, svg);
+  const tipkalo = svgEl(
+    'foreignObject',
+    {
+      x: String(TIPKALO.x),
+      y: String(TIPKALO.y),
+      width: '80',
+      height: '28',
+      class: 'tipkalo-wrap',
+    },
+    svg,
+  );
   tipkalo.innerHTML = '<button xmlns="http://www.w3.org/1999/xhtml" class="tipkalo" type="button"></button>';
 
   const layer = svgEl('g', { class: 'signals' }, svg);
@@ -127,7 +139,10 @@ const scene = buildScene(wrap, traffic);
 const { svg, signals, carLayer, pedestrianLayer, loopLayer } = scene;
 const follow = new FollowView(wrap, scene.followLayer);
 const debug = new DebugLayer(scene.debugGroup, wrap, traffic);
-const countdowns = new Countdowns(scene.countdownLayer, SIGNALS.filter((p) => p.kind === 'pedestrian'));
+const countdowns = new Countdowns(
+  scene.countdownLayer,
+  SIGNALS.filter((p) => p.kind === 'pedestrian'),
+);
 const tooltip = new SignalTooltip(wrap, signals);
 const environment = new Environment(wrap, svg, scene.nightLayer, scene.lightsLayer);
 const sound = new Sound();
@@ -414,52 +429,68 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       store.set({ paused: !s.paused });
       break;
-    case '1': case '2': case '3': case '4':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
       store.set({ speed: SPEEDS[Number(e.key) - 1] });
       break;
     case '.':
       stepOnce();
       break;
-    case 'f': case 'F':
+    case 'f':
+    case 'F':
       toggleFullscreen();
       break;
-    case 'n': case 'N':
+    case 'n':
+    case 'N':
       if (!s.dayCycle) store.set({ night: !s.night });
       break;
-    case 'r': case 'R':
+    case 'r':
+    case 'R':
       store.set({ weather: s.weather === 'rain' ? 'dry' : 'rain' });
       break;
-    case 'm': case 'M':
+    case 'm':
+    case 'M':
       store.set({ sound: !s.sound });
       break;
-    case 'd': case 'D':
+    case 'd':
+    case 'D':
       store.set({ debug: !s.debug });
       break;
-    case 's': case 'S':
+    case 's':
+    case 'S':
       store.set({ stats: !s.stats });
       break;
-    case 'c': case 'C':
+    case 'c':
+    case 'C':
       charts.toggle();
       break;
-    case 'o': case 'O':
+    case 'o':
+    case 'O':
       bench.open();
       break;
-    case 'e': case 'E':
+    case 'e':
+    case 'E':
       sendAmbulance();
       break;
-    case 'b': case 'B':
+    case 'b':
+    case 'B':
       traffic.breakDown();
       break;
-    case 'y': case 'Y':
+    case 'y':
+    case 'Y':
       toggleReplay();
       break;
     case 'Escape':
       toggleReplay(false);
       break;
-    case 'h': case 'H':
+    case 'h':
+    case 'H':
       startRush();
       break;
-    case 't': case 'T':
+    case 't':
+    case 'T':
       pressTipkalo();
       break;
     case '?':
@@ -480,7 +511,8 @@ let lastPhase: string | null = null;
 let lastWalk = [false, false];
 let lastPreempted = false;
 function announceChanges(snap: SimSnapshot): void {
-  const phase = sim.mode === 'flashing' ? 'flashing' : sim.greenPhase ?? (snap.vehicles.every((v) => v.red && !v.yellow) ? 'allRed' : lastPhase);
+  const phase =
+    sim.mode === 'flashing' ? 'flashing' : (sim.greenPhase ?? (snap.vehicles.every((v) => v.red && !v.yellow) ? 'allRed' : lastPhase));
   if (phase !== lastPhase) {
     lastPhase = phase;
     if (phase) announce(`announce.${phase}` as StringKey);

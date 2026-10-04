@@ -16,7 +16,7 @@ describe('timing safety', () => {
     expect(checkTimings('secondary', PLAN_TIMINGS.secondary)).toEqual([]);
   });
 
-  it('flags a main-road green that runs into the side road\'s green', () => {
+  it("flags a main-road green that runs into the side road's green", () => {
     const issues = analyzeTimeline(timelineWith(0, { open: 13, closed: 7 }));
     expect(issues).toHaveLength(1);
     expect(issues[0].kind).toBe('overlap');

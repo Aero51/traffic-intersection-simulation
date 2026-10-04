@@ -17,12 +17,12 @@ const STRINGS = {
   'fullscreen.enter': { hr: 'Cijeli zaslon (F)', en: 'Full screen (F)' },
   'fullscreen.exit': { hr: 'Izađi iz cijelog zaslona (F)', en: 'Exit full screen (F)' },
 
-  'tipkalo': { hr: 'Tipkalo', en: 'Walk' },
+  tipkalo: { hr: 'Tipkalo', en: 'Walk' },
   'tipkalo.wait': { hr: 'Čekajte…', en: 'Wait…' },
   'tipkalo.long': { hr: 'Tipkalo — zahtjev za pješake', en: 'Pedestrian button — request to cross' },
   'tipkalo.longWait': { hr: 'Zahtjev primljen — čekajte zeleno', en: 'Request received — wait for green' },
 
-  'menu': { hr: 'Izbornik', en: 'Menu' },
+  menu: { hr: 'Izbornik', en: 'Menu' },
   'menu.mode': { hr: 'Mod rada', en: 'Operating mode' },
   'mode.normal': { hr: 'Glavni prednost', en: 'Main road priority' },
   'mode.secondary': { hr: 'Sporedni prednost', en: 'Side road priority' },
@@ -68,7 +68,7 @@ const STRINGS = {
     en: 'Fixed: the cycle always runs. On demand: it holds while nobody waits at red. Actuated: green is extended while cars keep coming and cut short when none do. Longest queue: the road with more waiting cars gets green. Bus priority: like longest queue, but green is held or called early so a bus does not have to wait.',
   },
   'menu.defaults': { hr: 'Zadano', en: 'Defaults' },
-  'menu.defaults.hint': { hr: 'Vrati zadana vremena ovog moda', en: 'Restore this mode\'s default timings' },
+  'menu.defaults.hint': { hr: 'Vrati zadana vremena ovog moda', en: "Restore this mode's default timings" },
   'timeline.label': { hr: 'Ciklus', en: 'Cycle' },
   'timeline.legend': {
     hr: 'žuto 2 s · crveno-žuto 1 s · sve crveno 1 s',
@@ -110,7 +110,10 @@ const STRINGS = {
   'safety.none': { hr: 'Za ovaj semafor nema sigurne vrijednosti.', en: 'There is no safe value for this signal.' },
   'safety.blocked': { hr: 'Prihvati je isključeno dok postoji sukob', en: 'Apply is off while there is a conflict' },
   'traffic.ped': { hr: 'Pješaci', en: 'Pedestrians' },
-  'traffic.ped.desc': { hr: 'Pješaci koji sami dolaze i pritišću tipkalo (na minutu)', en: 'Pedestrians arriving and pressing the button on their own (per minute)' },
+  'traffic.ped.desc': {
+    hr: 'Pješaci koji sami dolaze i pritišću tipkalo (na minutu)',
+    en: 'Pedestrians arriving and pressing the button on their own (per minute)',
+  },
   'traffic.ped.unit': { hr: '– pješaka na minutu', en: '– pedestrians per minute' },
   'traffic.variety': { hr: 'Autobusi, kamioni, motori, bicikli', en: 'Buses, lorries, motorbikes, bicycles' },
   'traffic.drivers': { hr: 'Različiti vozači', en: 'Different drivers' },
@@ -151,7 +154,10 @@ const STRINGS = {
   'view.reset.hint': { hr: 'Zadana vremena, promet i prikaz', en: 'Default timings, traffic and view' },
 
   'preset.label': { hr: 'Scenarij', en: 'Scenario' },
-  'preset.hint': { hr: 'Gotov promet: količina vozila, pješaka, vrijeme i upravljanje', en: 'Ready-made traffic: cars, pedestrians, weather and control' },
+  'preset.hint': {
+    hr: 'Gotov promet: količina vozila, pješaka, vrijeme i upravljanje',
+    en: 'Ready-made traffic: cars, pedestrians, weather and control',
+  },
   'preset.choose': { hr: 'Odaberi…', en: 'Choose…' },
   'preset.quiet': { hr: 'Mirna noć', en: 'Quiet night' },
   'preset.rush': { hr: 'Vršni sat', en: 'Rush hour' },
@@ -256,7 +262,10 @@ const STRINGS = {
     hr: 'Trenutna vremena su već blizu najboljih (razlika {p} %). Promjena nije potrebna.',
     en: 'The current timings are already close to the best found (within {p}%). No change needed.',
   },
-  'opt.verdict.worse': { hr: 'Nijedna isprobana kombinacija nije bolja od trenutnih vremena.', en: 'None of the combinations tried beat the current timings.' },
+  'opt.verdict.worse': {
+    hr: 'Nijedna isprobana kombinacija nije bolja od trenutnih vremena.',
+    en: 'None of the combinations tried beat the current timings.',
+  },
   'opt.apply': { hr: 'Primijeni ova vremena', en: 'Apply these timings' },
   'opt.applied': { hr: 'Primijenjeno', en: 'Applied' },
   'opt.error': { hr: 'Pretraga nije uspjela. Pokušajte ponovno.', en: 'The search failed. Please try again.' },
@@ -401,10 +410,16 @@ export function applyLanguage(root: ParentNode = document): void {
   document.title = t('page.title');
   document.querySelector('meta[name="description"]')?.setAttribute('content', t('page.description'));
 
-  const tr = (keys: string) => keys.split(' ').map((k) => t(k as StringKey)).join(' ');
+  const tr = (keys: string) =>
+    keys
+      .split(' ')
+      .map((k) => t(k as StringKey))
+      .join(' ');
   for (const el of root.querySelectorAll<HTMLElement | SVGElement>('[data-i18n]')) el.textContent = tr(el.dataset.i18n!);
-  for (const el of root.querySelectorAll<HTMLElement | SVGElement>('[data-i18n-title]')) el.setAttribute('title', tr(el.dataset.i18nTitle!));
-  for (const el of root.querySelectorAll<HTMLElement | SVGElement>('[data-i18n-aria]')) el.setAttribute('aria-label', tr(el.dataset.i18nAria!));
+  for (const el of root.querySelectorAll<HTMLElement | SVGElement>('[data-i18n-title]'))
+    el.setAttribute('title', tr(el.dataset.i18nTitle!));
+  for (const el of root.querySelectorAll<HTMLElement | SVGElement>('[data-i18n-aria]'))
+    el.setAttribute('aria-label', tr(el.dataset.i18nAria!));
 }
 
 /** The HR | EN switch. */

@@ -183,7 +183,17 @@ describe('controller', () => {
 
 describe('statistics', () => {
   it('counts cars through the stop line and their waits', () => {
-    const def: RouteDef = { id: 'r', lane: 'a', weight: 1, control: { signal: 0 }, stopNear: [200, 0], path: [[0, 0], ['L', 400, 0]] };
+    const def: RouteDef = {
+      id: 'r',
+      lane: 'a',
+      weight: 1,
+      control: { signal: 0 },
+      stopNear: [200, 0],
+      path: [
+        [0, 0],
+        ['L', 400, 0],
+      ],
+    };
     const traffic = new Traffic([def], [{ id: 'g', lanes: { a: 1 } }]);
     const peds = new Pedestrians(() => 0.5);
     const stats = new Stats([{ id: 'g', lanes: { a: 1 } }]);
@@ -253,7 +263,17 @@ describe('traffic options', () => {
   });
 
   it('a broken-down car blocks its lane, then the queue behind it clears', () => {
-    const def: RouteDef = { id: 'r', lane: 'a', weight: 1, control: { signal: 0 }, stopNear: [500, 0], path: [[0, 0], ['L', 700, 0]] };
+    const def: RouteDef = {
+      id: 'r',
+      lane: 'a',
+      weight: 1,
+      control: { signal: 0 },
+      stopNear: [500, 0],
+      path: [
+        [0, 0],
+        ['L', 700, 0],
+      ],
+    };
     const traffic = new Traffic([def], [], seeded(1));
     const green = new Simulation().snapshot();
     green.vehicles[0] = { red: false, yellow: false, green: true, yellowBlinking: false };
@@ -273,7 +293,17 @@ describe('traffic options', () => {
   });
 
   it('reports why a car is stopped', () => {
-    const def: RouteDef = { id: 'r', lane: 'a', weight: 1, control: { signal: 0 }, stopNear: [200, 0], path: [[0, 0], ['L', 400, 0]] };
+    const def: RouteDef = {
+      id: 'r',
+      lane: 'a',
+      weight: 1,
+      control: { signal: 0 },
+      stopNear: [200, 0],
+      path: [
+        [0, 0],
+        ['L', 400, 0],
+      ],
+    };
     const traffic = new Traffic([def], []);
     const red = new Simulation().snapshot();
     red.vehicles[0] = { red: true, yellow: false, green: false, yellowBlinking: false };
@@ -286,7 +316,17 @@ describe('traffic options', () => {
   });
 
   it('brakes earlier in the rain', () => {
-    const def: RouteDef = { id: 'r', lane: 'a', weight: 1, control: { signal: 0 }, stopNear: [300, 0], path: [[0, 0], ['L', 500, 0]] };
+    const def: RouteDef = {
+      id: 'r',
+      lane: 'a',
+      weight: 1,
+      control: { signal: 0 },
+      stopNear: [300, 0],
+      path: [
+        [0, 0],
+        ['L', 500, 0],
+      ],
+    };
     const red = new Simulation().snapshot();
     red.vehicles[0] = { red: true, yellow: false, green: false, yellowBlinking: false };
     const firstBrake = (grip: number) => {

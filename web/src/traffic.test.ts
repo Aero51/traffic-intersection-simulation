@@ -9,7 +9,10 @@ const straight: RouteDef = {
   weight: 1,
   control: { signal: 0 },
   stopNear: [200, 0],
-  path: [[0, 0], ['L', 400, 0]],
+  path: [
+    [0, 0],
+    ['L', 400, 0],
+  ],
 };
 const branch: RouteDef = {
   id: 'branch',
@@ -17,7 +20,11 @@ const branch: RouteDef = {
   weight: 1,
   control: { signal: 0, arrow: 0 },
   stopNear: [200, 0],
-  path: [[0, 0], ['L', 250, 0], ['L', 250, 300]],
+  path: [
+    [0, 0],
+    ['L', 250, 0],
+    ['L', 250, 300],
+  ],
 };
 
 function snapshot(signal0: 'red' | 'yellow' | 'green' | 'blink', arrow0 = false): SimSnapshot {
@@ -190,7 +197,7 @@ describe('Traffic', () => {
 
   it('runs the real intersection for a long time without overlaps in any lane', () => {
     let seed = 1;
-    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const sim = new Simulation();
     const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
     for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 15);

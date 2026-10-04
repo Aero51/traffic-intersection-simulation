@@ -103,7 +103,11 @@ export class DebugLayer {
   private fps: HTMLElement;
   private frames: number[] = [];
 
-  constructor(private layer: SVGGElement, wrap: HTMLElement, traffic: Traffic) {
+  constructor(
+    private layer: SVGGElement,
+    wrap: HTMLElement,
+    traffic: Traffic,
+  ) {
     for (const route of traffic.routes) {
       const color = LANE_COLORS[route.def.lane] ?? '#fff';
       svg('path', { class: 'dbg-route', d: routePath(route), stroke: color }, layer);
@@ -269,7 +273,14 @@ export class SignalTooltip {
 
 /** Street lamps on the photo (near the poles), lighting the crosswalks at night. */
 const STREET_LAMPS: [number, number][] = [
-  [318, 340], [440, 380], [300, 205], [434, 100], [486, 120], [100, 120], [740, 470], [600, 330],
+  [318, 340],
+  [440, 380],
+  [300, 205],
+  [434, 100],
+  [486, 120],
+  [100, 120],
+  [740, 470],
+  [600, 330],
 ];
 
 export class Environment {
@@ -279,7 +290,12 @@ export class Environment {
   private clock: HTMLElement;
   private darknessLevel = -1;
 
-  constructor(private wrap: HTMLElement, svgRoot: SVGSVGElement, overlayLayer: SVGGElement, private lightsLayer: SVGGElement) {
+  constructor(
+    private wrap: HTMLElement,
+    svgRoot: SVGSVGElement,
+    overlayLayer: SVGGElement,
+    private lightsLayer: SVGGElement,
+  ) {
     svgRoot.querySelector('defs')!.insertAdjacentHTML(
       'beforeend',
       `<radialGradient id="street-lamp">

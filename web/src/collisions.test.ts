@@ -27,7 +27,12 @@ function corners(car: Car): [number, number][] {
   const { x, y, angle } = pose(car.route, car.s - car.length / 2, car.length * 0.6);
   const [c, s] = [Math.cos(angle), Math.sin(angle)];
   const [hl, hw] = [car.length / 2, car.width / 2];
-  return [[hl, hw], [hl, -hw], [-hl, -hw], [-hl, hw]].map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
+  return [
+    [hl, hw],
+    [hl, -hw],
+    [-hl, -hw],
+    [-hl, hw],
+  ].map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
 }
 
 function overlap(a: Car, b: Car): boolean {
@@ -55,7 +60,10 @@ describe('junction conflicts', () => {
   it('finds the merge reported by the user: left turn from the west vs right turn from the east', () => {
     const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS);
     const leftTurn = traffic.routes.find((r) => r.def.id === 'se-left-turn')!;
-    const merges = traffic.conflicts.get(leftTurn)!.filter((c) => c.kind === 'merge').map((c) => c.other.def.id);
+    const merges = traffic.conflicts
+      .get(leftTurn)!
+      .filter((c) => c.kind === 'merge')
+      .map((c) => c.other.def.id);
     expect(merges).toContain('nw-right-turn');
     const crossings = traffic.conflicts.get(leftTurn)!.filter((c) => c.kind === 'cross');
     // The left turn crosses oncoming traffic and gives way to it.
@@ -81,60 +89,64 @@ describe('junction conflicts', () => {
     { mode: 'normal', dt: 0.1, seed: 4, minutes: 6 },
     { mode: 'flashing', dt: 1 / 60, seed: 2, minutes: 4 },
     { mode: 'auto', dt: 0.1, seed: 3, minutes: 6 },
-  ] as const)('heavy traffic, $mode mode, dt $dt: no cars overlap and nobody is stuck', ({ mode, dt, seed: seedStart, minutes }) => {
-    let seed = seedStart * 7919;
-    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const sim = new Simulation();
-    if (mode === 'flashing') sim.setMode('flashing');
-    const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
-    for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 15);
+  ] as const)(
+    'heavy traffic, $mode mode, dt $dt: no cars overlap and nobody is stuck',
+    ({ mode, dt, seed: seedStart, minutes }) => {
+      let seed = seedStart * 7919;
+      const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const sim = new Simulation();
+      if (mode === 'flashing') sim.setMode('flashing');
+      const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
+      for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 15);
 
-    const seen = new Set<number>();
-    const stoppedFor = new Map<number, number>();
-    let longestStop = 0;
-    let example = '';
-    let crosswalkStops = 0;
-    let stopsAfterLine = 0;
-    const onCrosswalkFor = new Map<number, number>();
-    const wasMoving = new Map<number, boolean>();
-    for (let i = 0; i < (minutes * 60) / dt; i++) {
-      const before = sim.snapshot();
-      // Automatic mode: the signal cycle only runs while someone waits (see main.ts).
-      if (mode !== 'auto' || before.vehicles.some((v) => v.yellow) || traffic.waitingAtRed(before)) sim.advance(dt);
-      traffic.step(dt, sim.snapshot());
-      for (const c of traffic.cars) {
-        seen.add(c.id);
-        const stopped = c.v < 1 ? (stoppedFor.get(c.id) ?? 0) + dt : 0;
-        stoppedFor.set(c.id, stopped);
-        longestStop = Math.max(longestStop, stopped);
-        // Standing on a crosswalk for more than a moment means it drove into a full junction.
-        const before = onCrosswalkFor.get(c.id) ?? 0;
-        const there = c.v < 1 && onCrosswalk(c) ? before + dt : 0;
-        onCrosswalkFor.set(c.id, there);
-        if (there > 2 && before <= 2) crosswalkStops++;
-        // Once past its stop line a car may only slow down for the car in front, never come
-        // to a stop inside the junction.
-        if (c.v <= 1 && wasMoving.get(c.id) && c.s > c.route.stopAt + 1 && onScreen(c)) stopsAfterLine++;
-        wasMoving.set(c.id, c.v > 1);
-      }
-      const visible = traffic.cars.filter(onScreen);
-      for (let a = 0; a < visible.length && !example; a++) {
-        for (let b = a + 1; b < visible.length; b++) {
-          const [p, q] = [visible[a], visible[b]];
-          if (overlap(p, q)) {
-            example = `t=${sim.time.toFixed(1)} ${p.route.def.id}@${p.s.toFixed(0)} vs ${q.route.def.id}@${q.s.toFixed(0)}`;
-            break;
+      const seen = new Set<number>();
+      const stoppedFor = new Map<number, number>();
+      let longestStop = 0;
+      let example = '';
+      let crosswalkStops = 0;
+      let stopsAfterLine = 0;
+      const onCrosswalkFor = new Map<number, number>();
+      const wasMoving = new Map<number, boolean>();
+      for (let i = 0; i < (minutes * 60) / dt; i++) {
+        const before = sim.snapshot();
+        // Automatic mode: the signal cycle only runs while someone waits (see main.ts).
+        if (mode !== 'auto' || before.vehicles.some((v) => v.yellow) || traffic.waitingAtRed(before)) sim.advance(dt);
+        traffic.step(dt, sim.snapshot());
+        for (const c of traffic.cars) {
+          seen.add(c.id);
+          const stopped = c.v < 1 ? (stoppedFor.get(c.id) ?? 0) + dt : 0;
+          stoppedFor.set(c.id, stopped);
+          longestStop = Math.max(longestStop, stopped);
+          // Standing on a crosswalk for more than a moment means it drove into a full junction.
+          const before = onCrosswalkFor.get(c.id) ?? 0;
+          const there = c.v < 1 && onCrosswalk(c) ? before + dt : 0;
+          onCrosswalkFor.set(c.id, there);
+          if (there > 2 && before <= 2) crosswalkStops++;
+          // Once past its stop line a car may only slow down for the car in front, never come
+          // to a stop inside the junction.
+          if (c.v <= 1 && wasMoving.get(c.id) && c.s > c.route.stopAt + 1 && onScreen(c)) stopsAfterLine++;
+          wasMoving.set(c.id, c.v > 1);
+        }
+        const visible = traffic.cars.filter(onScreen);
+        for (let a = 0; a < visible.length && !example; a++) {
+          for (let b = a + 1; b < visible.length; b++) {
+            const [p, q] = [visible[a], visible[b]];
+            if (overlap(p, q)) {
+              example = `t=${sim.time.toFixed(1)} ${p.route.def.id}@${p.s.toFixed(0)} vs ${q.route.def.id}@${q.s.toFixed(0)}`;
+              break;
+            }
           }
         }
       }
-    }
-    expect(example).toBe('');
-    // Cars decide at the stop line and only go when they can get all the way through.
-    expect(stopsAfterLine).toBe(0);
-    expect(crosswalkStops).toBe(0);
-    expect(longestStop).toBeLessThan(60); // no gridlock or starvation: about a red phase at most
-    expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(30); // cars per minute through
-  }, 120_000);
+      expect(example).toBe('');
+      // Cars decide at the stop line and only go when they can get all the way through.
+      expect(stopsAfterLine).toBe(0);
+      expect(crosswalkStops).toBe(0);
+      expect(longestStop).toBeLessThan(60); // no gridlock or starvation: about a red phase at most
+      expect((seen.size - traffic.cars.length) / minutes).toBeGreaterThan(30); // cars per minute through
+    },
+    120_000,
+  );
 });
 
 /** Is a walker (a circle of radius r) touching this car's body? */
@@ -150,7 +162,7 @@ function hits(car: Car, w: Walker, r = 4): boolean {
 describe('pedestrians on the crossings', () => {
   it('cars stop for people on the road and drive on once they have crossed', () => {
     let seed = 7;
-    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const sim = new Simulation();
     const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, random);
     for (const g of TRAFFIC_GROUPS) traffic.setTarget(g.id, 12);
@@ -182,7 +194,8 @@ describe('pedestrians on the crossings', () => {
       const onRoad = peds.walkers.filter((w) => w.t >= KERB);
       for (const c of traffic.cars) {
         const w = onRoad.find((w) => hits(c, w));
-        if (w && !example) example = `t=${sim.time.toFixed(1)} ${c.route.def.id}@${c.s.toFixed(0)} hit walker on ${w.crossing.id} t=${w.t.toFixed(2)}`;
+        if (w && !example)
+          example = `t=${sim.time.toFixed(1)} ${c.route.def.id}@${c.s.toFixed(0)} hit walker on ${w.crossing.id} t=${w.t.toFixed(2)}`;
       }
     }
     expect(example).toBe('');

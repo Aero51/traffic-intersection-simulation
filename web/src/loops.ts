@@ -25,7 +25,10 @@ function band(route: Route, from: number, to: number): string {
 export class LoopLayer {
   private loops = new Map<string, SVGPathElement>();
 
-  constructor(private layer: SVGGElement, routes: Route[]) {
+  constructor(
+    private layer: SVGGElement,
+    routes: Route[],
+  ) {
     // One loop per lane; routes in a lane share the stretch before the stop line.
     for (const route of routes) {
       const lane = route.def.lane;

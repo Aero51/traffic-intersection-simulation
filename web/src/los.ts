@@ -4,7 +4,13 @@
 export type Los = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 
 /** Upper delay limit (s) of each grade; anything above the last is F. */
-const LIMITS: [Los, number][] = [['A', 10], ['B', 20], ['C', 35], ['D', 55], ['E', 80]];
+const LIMITS: [Los, number][] = [
+  ['A', 10],
+  ['B', 20],
+  ['C', 35],
+  ['D', 55],
+  ['E', 80],
+];
 
 export function levelOfService(delay: number): Los {
   for (const [grade, limit] of LIMITS) if (delay <= limit) return grade;

@@ -472,7 +472,13 @@ export class Simulation {
           if (drivesTurns && !this.mainCrossing) this.setCrossing(crossing, false);
         },
       },
-      { at: open, fire: () => { v().yellow = true; v().green = false; } },
+      {
+        at: open,
+        fire: () => {
+          v().yellow = true;
+          v().green = false;
+        },
+      },
       {
         at: open + YELLOW,
         fire: () => {
@@ -512,7 +518,12 @@ export class Simulation {
           }
         },
       },
-      { at: open + YELLOW + closed, fire: () => { v().yellow = true; } },
+      {
+        at: open + YELLOW + closed,
+        fire: () => {
+          v().yellow = true;
+        },
+      },
       {
         at: open + YELLOW + closed + RED_YELLOW,
         fire: () => {
@@ -550,9 +561,28 @@ export class Simulation {
           this.setCrossing(crossing, false);
         },
       },
-      { at: closed + 2, fire: () => { v().yellow = false; v().red = false; v().green = true; } },
-      { at: closed + open + 2, fire: () => { v().green = false; v().yellow = true; } },
-      { at: closed + open + 4, fire: () => { v().yellow = false; v().red = true; } },
+      {
+        at: closed + 2,
+        fire: () => {
+          v().yellow = false;
+          v().red = false;
+          v().green = true;
+        },
+      },
+      {
+        at: closed + open + 2,
+        fire: () => {
+          v().green = false;
+          v().yellow = true;
+        },
+      },
+      {
+        at: closed + open + 4,
+        fire: () => {
+          v().yellow = false;
+          v().red = true;
+        },
+      },
     ];
   }
 
@@ -598,7 +628,8 @@ export class Simulation {
           this.mainCrossing = this.sideCrossing = false;
           this.setCrossing(this.pedestrians, false);
           for (const v of this.signals(other)) {
-            if (v.green) set(v, false, true, false); // green -> yellow
+            if (v.green)
+              set(v, false, true, false); // green -> yellow
             else if (v.red && v.yellow) v.yellow = false; // was about to go green: stay red
           }
         },

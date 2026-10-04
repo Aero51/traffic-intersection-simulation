@@ -110,34 +110,63 @@ export class Signal {
     const frame = dark ? 'rgba(204,204,204,0.6)' : 'rgba(51,51,51,0.8)';
     const back = dark ? 'rgba(51,51,51,0.6)' : 'rgba(204,204,204,0.8)';
     el('rect', { x: 0, y: 0, width: W, height: (k + 0.1) * H, rx: W / 2, ry: 0.2 * H, fill: frame }, body);
-    el('rect', {
-      x: 0.125 * W,
-      y: 0.055 * H,
-      width: 0.75 * W,
-      height: k * H,
-      rx: 0.375 * W,
-      ry: 0.15 * H,
-      fill: back,
-      stroke: kind === 'vehicle' ? 'none' : 'gray',
-      'stroke-width': 0.75,
-    }, body);
+    el(
+      'rect',
+      {
+        x: 0.125 * W,
+        y: 0.055 * H,
+        width: 0.75 * W,
+        height: k * H,
+        rx: 0.375 * W,
+        ry: 0.15 * H,
+        fill: back,
+        stroke: kind === 'vehicle' ? 'none' : 'gray',
+        'stroke-width': 0.75,
+      },
+      body,
+    );
 
     LAMPS[kind].forEach((color, i) => {
       const cy = (0.2 + 0.3 * i) * H;
       const r = 0.3125 * W;
       const lamp = el('g', { class: `lamp lamp-${color}` }, body);
       el('circle', { class: 'off', cx: W / 2, cy, r, fill: `url(#lamp-${color}-off)` }, lamp);
-      el('ellipse', {
-        class: 'off', cx: 0.49375 * W, cy: cy - 0.07 * H, rx: 0.23125 * W, ry: 0.05 * H,
-        fill: 'url(#lamp-highlight-off)',
-      }, lamp);
-      el('circle', {
-        class: 'on', cx: W / 2, cy, r, fill: `url(#lamp-${color}-on)`, filter: `url(#glow-${color})`,
-      }, lamp);
-      el('ellipse', {
-        class: 'on', cx: 0.49375 * W, cy: cy - 0.07 * H, rx: 0.23125 * W, ry: 0.05 * H,
-        fill: 'url(#lamp-highlight-on)',
-      }, lamp);
+      el(
+        'ellipse',
+        {
+          class: 'off',
+          cx: 0.49375 * W,
+          cy: cy - 0.07 * H,
+          rx: 0.23125 * W,
+          ry: 0.05 * H,
+          fill: 'url(#lamp-highlight-off)',
+        },
+        lamp,
+      );
+      el(
+        'circle',
+        {
+          class: 'on',
+          cx: W / 2,
+          cy,
+          r,
+          fill: `url(#lamp-${color}-on)`,
+          filter: `url(#glow-${color})`,
+        },
+        lamp,
+      );
+      el(
+        'ellipse',
+        {
+          class: 'on',
+          cx: 0.49375 * W,
+          cy: cy - 0.07 * H,
+          rx: 0.23125 * W,
+          ry: 0.05 * H,
+          fill: 'url(#lamp-highlight-on)',
+        },
+        lamp,
+      );
       this.lamps.set(color, lamp);
     });
   }

@@ -43,8 +43,30 @@ export function summaryCsv(stats: Stats): string {
 /** Results of the control comparison or the timing search. */
 export function benchCsv(results: BenchResult[]): string {
   return toCsv([
-    ['strategy', 'avg_wait_s', 'longest_wait_s', 'cars_per_min', 'longest_queue', 'avg_pedestrian_wait_s', 'avg_delay_per_user_s', 'level_of_service', 'bus_avg_wait_s', 'co2_g_per_car'],
-    ...results.map((r) => [r.strategy, r.avgWait, r.maxWait, r.throughput, r.maxQueue, r.pedAvgWait, r.delay, levelOfService(r.delay), r.busAvgWait, r.co2PerCar]),
+    [
+      'strategy',
+      'avg_wait_s',
+      'longest_wait_s',
+      'cars_per_min',
+      'longest_queue',
+      'avg_pedestrian_wait_s',
+      'avg_delay_per_user_s',
+      'level_of_service',
+      'bus_avg_wait_s',
+      'co2_g_per_car',
+    ],
+    ...results.map((r) => [
+      r.strategy,
+      r.avgWait,
+      r.maxWait,
+      r.throughput,
+      r.maxQueue,
+      r.pedAvgWait,
+      r.delay,
+      levelOfService(r.delay),
+      r.busAvgWait,
+      r.co2PerCar,
+    ]),
   ]);
 }
 

@@ -99,7 +99,6 @@ export interface CrosswalkZone {
   u: [number, number];
 }
 
-
 function flatten(def: RouteDef): Point[] {
   const [start, ...segments] = def.path;
   const out: Point[] = [start];
@@ -157,8 +156,7 @@ function resample(poly: Point[]): Float64Array {
 function speedProfile(points: Float64Array, length: number): Float64Array {
   const speed = new Float64Array(length + 1).fill(MAX_SPEED);
   const k = 6;
-  const heading = (a: number, b: number) =>
-    Math.atan2(points[2 * b + 1] - points[2 * a + 1], points[2 * b] - points[2 * a]);
+  const heading = (a: number, b: number) => Math.atan2(points[2 * b + 1] - points[2 * a + 1], points[2 * b] - points[2 * a]);
   for (let i = k; i <= length - k; i++) {
     let turn = Math.abs(heading(i, i + k) - heading(i - k, i));
     if (turn > Math.PI) turn = 2 * Math.PI - turn;
@@ -230,9 +228,19 @@ export function findConflicts(a: Route, b: Route, aYields: boolean): Conflict[] 
       const join: [number, number] = [2 * k, near[k]];
       out.push({ kind: 'merge', key, other: b, at: [a0, a.length], otherAt: [b0, b.length], join, yields: false });
     } else {
-      const pad = (lo: number, hi: number, len: number): [number, number] =>
-        [Math.max(0, lo - ZONE_PADDING), Math.min(len, hi + ZONE_PADDING)];
-      out.push({ kind: 'cross', key, other: b, at: pad(a0, a1, a.length), otherAt: pad(b0, b1, b.length), join: [a0, b0], yields: aYields });
+      const pad = (lo: number, hi: number, len: number): [number, number] => [
+        Math.max(0, lo - ZONE_PADDING),
+        Math.min(len, hi + ZONE_PADDING),
+      ];
+      out.push({
+        kind: 'cross',
+        key,
+        other: b,
+        at: pad(a0, a1, a.length),
+        otherAt: pad(b0, b1, b.length),
+        join: [a0, b0],
+        yields: aYields,
+      });
     }
   };
   for (let i = 0; i <= a.length; i += 2) {

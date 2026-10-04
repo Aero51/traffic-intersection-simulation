@@ -17,7 +17,16 @@ describe('presets', () => {
 describe('scenario files', () => {
   it('round-trips settings and timings', () => {
     const settings = { ...DEFAULT_SETTINGS, control: 'queue' as const, night: true, cars: { ...DEFAULT_SETTINGS.cars, istok: 3 } };
-    const timings = { normal: [{ open: 12, closed: 9 }, { open: 12, closed: 9 }, { open: 12, closed: 9 }, { open: 12, closed: 9 }, { open: 4, closed: 17 }], secondary: PLAN_TIMINGS.secondary };
+    const timings = {
+      normal: [
+        { open: 12, closed: 9 },
+        { open: 12, closed: 9 },
+        { open: 12, closed: 9 },
+        { open: 12, closed: 9 },
+        { open: 4, closed: 17 },
+      ],
+      secondary: PLAN_TIMINGS.secondary,
+    };
     const back = parseScenario(scenarioToJson(settings, timings));
     expect(back.settings.control).toBe('queue');
     expect(back.settings.night).toBe(true);
@@ -35,7 +44,15 @@ describe('scenario files', () => {
       kind: 'raskrsce-scenario',
       settings: { mode: 'bogus', control: 'x', cars: { istok: 999, sjever: 2 }, pedestrians: -1, night: 'yes' },
       // both roads open at once
-      timings: { normal: [{ open: 20, closed: 1 }, { open: 20, closed: 1 }, { open: 20, closed: 1 }, { open: 20, closed: 1 }, { open: 20, closed: 1 }] },
+      timings: {
+        normal: [
+          { open: 20, closed: 1 },
+          { open: 20, closed: 1 },
+          { open: 20, closed: 1 },
+          { open: 20, closed: 1 },
+          { open: 20, closed: 1 },
+        ],
+      },
     });
     const { settings, timings } = parseScenario(file);
     expect(settings.mode).toBe(DEFAULT_SETTINGS.mode);

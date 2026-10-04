@@ -92,15 +92,19 @@ function carSprite(car: Car): string {
     `M${f(xOuter)},${f(-glassW)} L${f(xOuter)},${f(glassW)} L${f(xInner)},${f(roofW)} L${f(xInner)},${f(-roofW)} Z`;
 
   const boxy = car.kind === 'van' || car.kind === 'ambulance';
-  const ambulance = car.kind === 'ambulance'
-    ? `<rect x="${f(roof)}" y="${f(-W / 2)}" width="${f(L / 2 - roof - 2)}" height="2.2" fill="#d32f2f"/>
+  const ambulance =
+    car.kind === 'ambulance'
+      ? `<rect x="${f(roof)}" y="${f(-W / 2)}" width="${f(L / 2 - roof - 2)}" height="2.2" fill="#d32f2f"/>
        <rect x="${f(roof)}" y="${f(W / 2 - 2.2)}" width="${f(L / 2 - roof - 2)}" height="2.2" fill="#d32f2f"/>
        <path d="M${f(roof + L * 0.22)},${f(-3.5)} h3 v2.5 h2.5 v3 h-2.5 v2.5 h-3 v-2.5 h-2.5 v-3 h2.5 z" fill="#d32f2f"/>
        <rect class="beacon beacon-a" x="${f(ws[1] - 3.2)}" y="${f(-W * 0.36)}" width="2.8" height="${f(W * 0.3)}" rx="1"/>
        <rect class="beacon beacon-b" x="${f(ws[1] - 3.2)}" y="${f(W * 0.06)}" width="2.8" height="${f(W * 0.3)}" rx="1"/>`
-    : '';
+      : '';
 
-  return common(L, W, `
+  return common(
+    L,
+    W,
+    `
     <rect x="${f(c.wsFront * L - 0.5)}" y="${f(y0 - 1.6)}" width="2.6" height="${f(W + 3.2)}" rx="0.9" fill="${car.color}" stroke="rgba(0,0,0,0.5)" stroke-width="0.5"/>
     <rect x="${f(x0)}" y="${f(y0)}" width="${L}" height="${W}" rx="${f(W * 0.38)}" fill="${car.color}"/>
     <rect x="${f(x0)}" y="${f(y0)}" width="${L}" height="${W}" rx="${f(W * 0.38)}" fill="url(#car-sheen)" stroke="rgba(0,0,0,0.55)" stroke-width="0.7"/>
@@ -110,7 +114,8 @@ function carSprite(car: Car): string {
     <rect x="${f(roof)}" y="${f(W * 0.35)}" width="${f(ws[1] - roof)}" height="${f(W * 0.08)}" fill="#16222d" opacity="0.9"/>
     <rect x="${f(roof)}" y="${f(-roofW)}" width="${f(ws[1] - roof)}" height="${f(2 * roofW)}" rx="1.5" fill="url(#car-roof)"/>
     ${boxy ? `<path d="M${f(roof + L * 0.18)},${f(-roofW)} v${f(2 * roofW)} M${f(roof + L * 0.4)},${f(-roofW)} v${f(2 * roofW)}" stroke="rgba(0,0,0,0.18)" stroke-width="0.8"/>` : ''}
-    ${ambulance}`);
+    ${ambulance}`,
+  );
 }
 
 /** City bus: long roof with air-conditioning boxes, windows along both sides. */
@@ -119,7 +124,10 @@ function busSprite(car: Car): string {
   const W = car.width;
   const x0 = -L / 2;
   const y0 = -W / 2;
-  return common(L, W, `
+  return common(
+    L,
+    W,
+    `
     <rect x="${f(x0)}" y="${f(y0)}" width="${L}" height="${W}" rx="3" fill="${car.color}"/>
     <rect x="${f(x0)}" y="${f(y0)}" width="${L}" height="${W}" rx="3" fill="url(#car-sheen)" stroke="rgba(0,0,0,0.55)" stroke-width="0.7"/>
     <rect x="${f(x0 + 3)}" y="${f(y0 + 0.8)}" width="${f(L - 9)}" height="2.4" fill="#16222d" opacity="0.85"/>
@@ -127,7 +135,8 @@ function busSprite(car: Car): string {
     <rect x="${f(L / 2 - 4.5)}" y="${f(y0 + 1)}" width="3.6" height="${f(W - 2)}" rx="1" fill="url(#car-glass)"/>
     <rect x="${f(x0 + 4)}" y="${f(-W * 0.3)}" width="${f(L - 12)}" height="${f(W * 0.6)}" rx="1.5" fill="#eceff1" opacity="0.88"/>
     <rect x="${f(x0 + L * 0.18)}" y="${f(-W * 0.22)}" width="9" height="${f(W * 0.44)}" rx="1" fill="#b0bec5"/>
-    <rect x="${f(x0 + L * 0.55)}" y="${f(-W * 0.22)}" width="9" height="${f(W * 0.44)}" rx="1" fill="#b0bec5"/>`);
+    <rect x="${f(x0 + L * 0.55)}" y="${f(-W * 0.22)}" width="9" height="${f(W * 0.44)}" rx="1" fill="#b0bec5"/>`,
+  );
 }
 
 /** Lorry: cab at the front, a white box behind it. */
@@ -138,12 +147,16 @@ function truckSprite(car: Car): string {
   const y0 = -W / 2;
   const cab = 13;
   const box = L - cab - 1.5;
-  return common(L, W, `
+  return common(
+    L,
+    W,
+    `
     <rect x="${f(L / 2 - cab)}" y="${f(y0 + 0.5)}" width="${cab}" height="${f(W - 1)}" rx="3" fill="${car.color}" stroke="rgba(0,0,0,0.55)" stroke-width="0.7"/>
     <rect x="${f(L / 2 - 4.5)}" y="${f(y0 + 2)}" width="3.4" height="${f(W - 4)}" rx="1" fill="url(#car-glass)"/>
     <rect x="${f(x0)}" y="${f(y0)}" width="${f(box)}" height="${W}" rx="1.2" fill="#e8eaed"/>
     <rect x="${f(x0)}" y="${f(y0)}" width="${f(box)}" height="${W}" rx="1.2" fill="url(#car-sheen)" stroke="rgba(0,0,0,0.55)" stroke-width="0.7"/>
-    <path d="${Array.from({ length: 5 }, (_, i) => `M${f(x0 + ((i + 1) * box) / 6)},${f(y0 + 1)} v${f(W - 2)}`).join(' ')}" stroke="rgba(0,0,0,0.12)" stroke-width="0.8"/>`);
+    <path d="${Array.from({ length: 5 }, (_, i) => `M${f(x0 + ((i + 1) * box) / 6)},${f(y0 + 1)} v${f(W - 2)}`).join(' ')}" stroke="rgba(0,0,0,0.12)" stroke-width="0.8"/>`,
+  );
 }
 
 /** Motorbike and rider seen from above. */
@@ -215,7 +228,10 @@ export class CarLayer {
   private nodes = new Map<number, Node>();
   private followed: number | null = null;
 
-  constructor(private layer: SVGGElement, private lightsLayer: SVGGElement) {}
+  constructor(
+    private layer: SVGGElement,
+    private lightsLayer: SVGGElement,
+  ) {}
 
   /** Highlight one car (or none). */
   setFollowed(id: number | null): void {
