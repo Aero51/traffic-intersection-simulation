@@ -125,6 +125,11 @@ const STRINGS = {
   'traffic.rush': { hr: 'Špica', en: 'Rush hour' },
   'traffic.rush.hint': { hr: 'Dvostruko više vozila idućih 60 s (H)', en: 'Twice the traffic for the next 60 s (H)' },
   'traffic.rush.on': { hr: 'Špica…', en: 'Rush…' },
+  'traffic.breakdown': { hr: 'Kvar', en: 'Breakdown' },
+  'traffic.breakdown.hint': {
+    hr: 'Automobil ispred raskrižja ostaje stajati 25 s i blokira traku (B)',
+    en: 'A car before the junction breaks down and blocks its lane for 25 s (B)',
+  },
   'traffic.emergency': { hr: 'Hitna pomoć', en: 'Ambulance' },
   'traffic.emergency.hint': {
     hr: 'Pošalji vozilo hitne pomoći; semafori mu daju zeleno (E)',
@@ -260,6 +265,7 @@ const STRINGS = {
   'key.charts': { hr: 'Grafikoni i izvoz', en: 'Charts and export' },
   'key.analysis': { hr: 'Usporedba upravljanja i optimizacija', en: 'Control comparison and timing search' },
   'key.emergency': { hr: 'Hitna pomoć', en: 'Ambulance' },
+  'key.breakdown': { hr: 'Kvar automobila', en: 'Breakdown' },
   'key.rush': { hr: 'Špica', en: 'Rush hour' },
   'key.walk': { hr: 'Tipkalo', en: 'Walk button' },
   'key.help': { hr: 'Ova pomoć', en: 'This help' },
@@ -305,6 +311,7 @@ const STRINGS = {
   'status.yield': { hr: 'propušta vozila', en: 'giving way' },
   'status.blocked': { hr: 'raskrižje zauzeto', en: 'junction blocked' },
   'status.crosswalk': { hr: 'propušta pješake', en: 'waiting for pedestrians' },
+  'status.stalled': { hr: 'kvar – hazard svjetla', en: 'broken down' },
   'status.merge': { hr: 'uključuje se', en: 'merging' },
   'route.nw-straight': { hr: 's istoka, ravno', en: 'from the east, straight on' },
   'route.nw-right-turn': { hr: 's istoka, desno', en: 'from the east, turning right' },

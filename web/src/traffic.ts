@@ -50,7 +50,7 @@ export const AMBULANCE: VehicleType = { kind: 'ambulance', length: 48, width: 20
 
 /** Why a car is going slower than it could (for the "follow a car" label). */
 export type CarStatus =
-  | 'free' | 'curve' | 'start' | 'red' | 'yellow' | 'queue' | 'yield' | 'blocked' | 'crosswalk' | 'merge';
+  | 'free' | 'curve' | 'start' | 'red' | 'yellow' | 'queue' | 'yield' | 'blocked' | 'crosswalk' | 'merge' | 'stalled';
 
 /** A car crossing its stop line, for the statistics. */
 export interface PassEvent {
@@ -109,10 +109,14 @@ export interface Car {
   /** Seconds spent standing before the stop line so far. */
   wait: number;
   passedLine: boolean;
+  /** Broken down: seconds left before the driver gets going again (0 = fine). Hazard lights on. */
+  stalled: number;
   /** While yielding: the other road's car it waits for, and why (for the debug view). */
   blocker: { car: Car; why: 'merge' | 'claim' | 'in the way' | 'patience' | 'gap' } | null;
 }
 
+/** How long a broken-down car blocks its lane. */
+export const INCIDENT_SECONDS = 25;
 export const MIN_GAP = 7;
 const ACCEL = 50;
 
@@ -307,6 +311,21 @@ export class Traffic {
     return lanes;
   }
 
+  /**
+   * A car on its way to the stop line breaks down where it stands, blocking its lane for
+   * `seconds`. Picks the one closest to the line that is still clear of the junction.
+   */
+  breakDown(seconds = INCIDENT_SECONDS): Car | null {
+    let pick: Car | null = null;
+    for (const car of this.cars) {
+      if (car.emergency || car.passedLine || car.stalled > 0 || car.cleared) continue;
+      if (car.s < 40 || car.route.stopAt - car.s < 30) continue;
+      if (!pick || car.s > pick.s) pick = car;
+    }
+    if (pick) pick.stalled = seconds;
+    return pick;
+  }
+
   /** Add a car at the start of a route if there's room. Returns it, or null. */
   spawn(route: Route, group = route.def.lane, forced?: VehicleType): Car | null {
     const room = this.roomAhead(route, 0, null);
@@ -345,6 +364,7 @@ export class Traffic {
       status: 'free',
       wait: 0,
       passedLine: false,
+      stalled: 0,
       blocker: null,
     };
     this.cars.push(car);
@@ -383,6 +403,14 @@ export class Traffic {
     this.cars.forEach((car, i) => {
       let limit = limits[i];
       const { route } = car;
+      if (car.stalled > 0) {
+        car.stalled = Math.max(0, car.stalled - dt);
+        car.v = 0;
+        car.braking = true;
+        car.status = 'stalled';
+        car.indicator = null;
+        return;
+      }
       // A driver standing still takes a moment to react before moving off.
       let reacting = false;
       if (car.v < 1 && limit > 1 && car.starting < car.reaction) {

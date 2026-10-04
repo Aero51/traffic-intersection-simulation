@@ -207,7 +207,7 @@ interface Node {
   g: SVGGElement;
   lights: SVGGElement;
   braking: boolean;
-  indicator: Car['indicator'];
+  indicator: Car['indicator'] | 'hazard';
   transform: string;
 }
 
@@ -251,12 +251,14 @@ export class CarLayer {
         node.g.classList.toggle('is-braking', car.braking);
         node.lights.classList.toggle('is-braking', car.braking);
       }
-      if (node.indicator !== car.indicator) {
+      const signal = car.stalled > 0 ? 'hazard' : car.indicator;
+      if (node.indicator !== signal) {
         for (const el of [node.g, node.lights]) {
           el.classList.remove('indicating-left', 'indicating-right');
-          if (car.indicator) el.classList.add(`indicating-${car.indicator}`);
+          if (signal === 'hazard') el.classList.add('indicating-left', 'indicating-right');
+          else if (signal) el.classList.add(`indicating-${signal}`);
         }
-        node.indicator = car.indicator;
+        node.indicator = signal;
       }
       // car.s is the front bumper; the body is centred half a length behind it, and the
       // heading is taken over the wheelbase so the car turns smoothly through curves.

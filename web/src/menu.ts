@@ -22,6 +22,7 @@ export interface MenuCallbacks {
   trafficGroups: TrafficSlider[];
   onRush(): void;
   onEmergency(): void;
+  onBreakdown(): void;
   onCopyLink(): Promise<boolean>;
   onResetAll(): void;
   onPreset(id: string): void;
@@ -152,6 +153,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
           ${check('dayCycle', 'traffic.day', 'traffic.day.hint')}
           <div class="menu-toolbar">
             <button type="button" class="menu-apply" data-action="rush" data-i18n="traffic.rush" data-i18n-title="traffic.rush.hint"></button>
+            <button type="button" class="menu-apply" data-action="breakdown" data-i18n="traffic.breakdown" data-i18n-title="traffic.breakdown.hint"></button>
             <button type="button" class="menu-apply menu-emergency" data-action="emergency" data-i18n="traffic.emergency" data-i18n-title="traffic.emergency.hint"></button>
           </div>
         </div>
@@ -388,6 +390,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
       load(selected);
     } else if (action === 'rush') cb.onRush();
     else if (action === 'emergency') cb.onEmergency();
+    else if (action === 'breakdown') cb.onBreakdown();
     else if (action === 'reset') cb.onResetAll();
     else if (action === 'save') cb.onSaveScenario();
     else if (action === 'load') scenarioFile.click();

@@ -252,6 +252,26 @@ describe('traffic options', () => {
     expect(bike!.width).toBeLessThan(10);
   });
 
+  it('a broken-down car blocks its lane, then the queue behind it clears', () => {
+    const def: RouteDef = { id: 'r', lane: 'a', weight: 1, control: { signal: 0 }, stopNear: [500, 0], path: [[0, 0], ['L', 700, 0]] };
+    const traffic = new Traffic([def], [], seeded(1));
+    const green = new Simulation().snapshot();
+    green.vehicles[0] = { red: false, yellow: false, green: true, yellowBlinking: false };
+    const first = traffic.spawn(traffic.routes[0])!;
+    for (let i = 0; i < 80; i++) traffic.step(1 / 20, green); // drive up the road
+    const victim = traffic.breakDown(10)!;
+    expect(victim).toBe(first);
+    const behind = traffic.spawn(traffic.routes[0])!;
+    for (let i = 0; i < 20 * 8; i++) traffic.step(1 / 20, green);
+    expect(victim.status).toBe('stalled');
+    expect(victim.v).toBe(0);
+    expect(behind.s).toBeLessThan(victim.s - victim.length); // stuck behind it
+    for (let i = 0; i < 20 * 20; i++) traffic.step(1 / 20, green);
+    expect(victim.stalled).toBe(0);
+    expect(victim.s).toBeGreaterThan(0);
+    expect(behind.s).toBeGreaterThan(victim.s - 200);
+  });
+
   it('reports why a car is stopped', () => {
     const def: RouteDef = { id: 'r', lane: 'a', weight: 1, control: { signal: 0 }, stopNear: [200, 0], path: [[0, 0], ['L', 400, 0]] };
     const traffic = new Traffic([def], []);

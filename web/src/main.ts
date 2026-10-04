@@ -184,6 +184,7 @@ const menu = createMenu(main, {
   trafficGroups: TRAFFIC_GROUPS,
   onRush: startRush,
   onEmergency: sendAmbulance,
+  onBreakdown: () => void traffic.breakDown(),
   onCopyLink: copyLink,
   onResetAll: resetAll,
   onPreset: applyPreset,
@@ -409,6 +410,9 @@ document.addEventListener('keydown', (e) => {
       break;
     case 'e': case 'E':
       sendAmbulance();
+      break;
+    case 'b': case 'B':
+      traffic.breakDown();
       break;
     case 'h': case 'H':
       startRush();

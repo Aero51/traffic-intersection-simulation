@@ -107,6 +107,7 @@ const KEYS: [string, StringKey][] = [
   ['.', 'key.step'],
   ['T', 'key.walk'],
   ['E', 'key.emergency'],
+  ['B', 'key.breakdown'],
   ['H', 'key.rush'],
   ['S', 'key.stats'],
   ['C', 'key.charts'],
