@@ -16,6 +16,10 @@
   right: 0;
   top: calc(100% - 44 * var(--u));
   width: calc(320 * var(--u));
+  /* Never taller than the map: the header stays on screen and the body scrolls instead. */
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
   border-right: 0;
@@ -101,6 +105,12 @@
 .menu-body {
   margin: 0;
   padding: calc(12 * var(--u));
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.menu-header {
+  flex: none;
 }
 
 /* Closed: only the header shows at the bottom edge; hide the body once it has slid down. */
@@ -487,6 +497,21 @@
   gap: calc(8 * var(--u));
   padding: calc(12 * var(--u));
 }
+#panel-traffic .menu-row {
+  min-height: calc(36 * var(--u));
+}
+/* Traffic tab: Rush hour, Breakdown and Ambulance share one row (saves a row of height). */
+#panel-traffic .menu-toolbar {
+  flex-wrap: nowrap;
+  gap: calc(6 * var(--u));
+  padding-block: calc(8 * var(--u));
+}
+#panel-traffic .menu-toolbar .menu-apply {
+  flex: 1 1 auto;
+  padding-left: calc(8 * var(--u));
+  padding-right: calc(8 * var(--u));
+  white-space: nowrap;
+}
 .menu-apply {
   min-height: calc(32 * var(--u));
   padding: calc(7 * var(--u)) calc(18 * var(--u));
@@ -538,6 +563,8 @@
 @media (max-width: 720px) {
   .menu {
     --u: 1.1px;
+    display: block;
+    max-height: none;
     position: static;
     width: 100%;
     max-width: 440px;

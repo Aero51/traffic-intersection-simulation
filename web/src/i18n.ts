@@ -116,7 +116,7 @@ const STRINGS = {
     en: 'Pedestrians arriving and pressing the button on their own (per minute)',
   },
   'traffic.ped.unit': { hr: '– pješaka na minutu', en: '– pedestrians per minute' },
-  'traffic.variety': { hr: 'Autobusi, kamioni, motori, bicikli', en: 'Buses, lorries, motorbikes, bicycles' },
+  'traffic.variety': { hr: 'Autobusi, kamioni, dvokolice', en: 'Buses, lorries, two-wheelers' },
   'traffic.drivers': { hr: 'Različiti vozači', en: 'Different drivers' },
   'traffic.drivers.hint': {
     hr: 'Svaki vozač ima svoju brzinu, ubrzanje, razmak i vrijeme reakcije; neki prolaze na žuto',
