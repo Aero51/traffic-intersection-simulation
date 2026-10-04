@@ -4,6 +4,7 @@
 import { VEHICLE_COUNT, type SignalTiming, type Timeline } from './sim';
 import { MAX_CARS, type TrafficSlider } from './routes';
 import { CONTROL_STRATEGIES } from './controller';
+import { analyzeTimeline, safeOpenRange, type SafetyIssue } from './safety';
 import { MAX_PEDESTRIAN_RATE, type Settings, type Store } from './settings';
 import { applyLanguage, onLangChange, t, type StringKey } from './i18n';
 
@@ -42,17 +43,20 @@ const spinner = (name: string, label: StringKey, disabled = false) => `
     <div class="spinner${disabled ? ' is-disabled' : ''}">
       <input id="menu-${name}" name="${name}" type="number" inputmode="numeric" ${disabled ? 'disabled' : ''} />
       <div class="spinner-buttons">
-        <button type="button" data-step="1" data-for="${name}" data-i18n-aria="${label} spinner.more" ${disabled ? 'disabled' : ''}>▲</button>
-        <button type="button" data-step="-1" data-for="${name}" data-i18n-aria="${label} spinner.less" ${disabled ? 'disabled' : ''}>▼</button>
+        <button type="button" data-step="1" data-for="${name}" data-i18n-aria="${label} spinner.more" ${disabled ? 'disabled' : ''}>+</button>
+        <button type="button" data-step="-1" data-for="${name}" data-i18n-aria="${label} spinner.less" ${disabled ? 'disabled' : ''}>−</button>
       </div>
     </div>
   </div>`;
+
+/** How far along its track a slider's thumb is, for the filled part of the track. */
+const fill = (value: number, max: number) => `${((value / max) * 100).toFixed(1)}%`;
 
 const slider = (id: string, label: StringKey, description: StringKey, unit: StringKey, max: number, value: number) => `
   <div class="menu-row menu-slider">
     <label for="traffic-${id}" data-i18n="${label}" data-i18n-title="${description}"></label>
     <input id="traffic-${id}" type="range" min="0" max="${max}" step="1" value="${value}"
-      data-setting="${id}" data-i18n-aria="${description} ${unit}" />
+      style="--p: ${fill(value, max)}" data-setting="${id}" data-i18n-aria="${description} ${unit}" />
     <output for="traffic-${id}">${value}</output>
   </div>`;
 
@@ -63,6 +67,13 @@ const check = (name: keyof Settings, label: StringKey, hint?: StringKey) => `
   </div>`;
 
 const TABS = ['signals', 'traffic', 'view'] as const;
+const TAB_ICONS: Record<(typeof TABS)[number], string> = {
+  signals:
+    '<rect x="5" y="1.5" width="6" height="13" rx="3"/><circle cx="8" cy="5" r="0.9"/><circle cx="8" cy="8" r="0.9"/><circle cx="8" cy="11" r="0.9"/>',
+  traffic:
+    '<path d="M2 10.5V8.2l1.4-3h9.2l1.4 3v2.3"/><path d="M2 10.5h12"/><circle cx="5" cy="11.8" r="1.4"/><circle cx="11" cy="11.8" r="1.4"/>',
+  view: '<path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>',
+};
 type Tab = (typeof TABS)[number];
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -70,17 +81,21 @@ const TL_WIDTH = 300;
 const TL_LABEL = 14;
 const TL_ROW = 9;
 const TL_GAP = 2;
-const LAMP_FILL: Record<string, string> = { G: '#2fbf3a', Y: '#f2c200', R: '#d6302a', RY: 'url(#tl-ry)', '': '#cfd4da', '*': '#f2c200' };
+const LAMP_FILL: Record<string, string> = { G: '#34c26a', Y: '#f5c518', R: '#e5484d', RY: 'url(#tl-ry)', '': '#2a323d', '*': '#f5c518' };
 
 export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   const s0 = cb.store.get();
   const root = document.createElement('section');
   root.className = 'menu';
   root.innerHTML = `
-    <button type="button" class="menu-header" aria-expanded="false" aria-controls="menu-body" data-i18n="menu"></button>
+    <button type="button" class="menu-header" aria-expanded="false" aria-controls="menu-body">
+      <svg class="menu-logo" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="0.75" width="7" height="14.5" rx="3.5"/><circle cx="8" cy="4.4" r="1.15"/><circle cx="8" cy="8" r="1.15"/><circle cx="8" cy="11.6" r="1.15"/></svg>
+      <span data-i18n="menu"></span>
+      <svg class="menu-chevron" viewBox="0 0 12 8" aria-hidden="true"><path d="M1.5 6.5L6 2l4.5 4.5"/></svg>
+    </button>
     <form id="menu-body" class="menu-body">
       <div class="menu-tabs" role="tablist">
-        ${TABS.map((tab) => `<button type="button" role="tab" id="tab-${tab}" aria-controls="panel-${tab}" data-tab="${tab}" data-i18n="tab.${tab}"></button>`).join('')}
+        ${TABS.map((tab) => `<button type="button" role="tab" id="tab-${tab}" aria-controls="panel-${tab}" data-tab="${tab}"><svg viewBox="0 0 16 16" aria-hidden="true">${TAB_ICONS[tab]}</svg><span data-i18n="tab.${tab}"></span></button>`).join('')}
       </div>
 
       <div class="menu-panel" role="tabpanel" id="panel-signals" aria-labelledby="tab-signals">
@@ -160,6 +175,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   const weather = form.querySelector<HTMLSelectElement>('#menu-weather')!;
   const svg = form.querySelector<SVGSVGElement>('.timeline')!;
   const legend = form.querySelector<HTMLElement>('.timeline-legend')!;
+  const applyButton = form.querySelector<HTMLButtonElement>('.menu-apply[type="submit"]')!;
   const rushButton = form.querySelector<HTMLButtonElement>('[data-action="rush"]')!;
   const emergencyButton = form.querySelector<HTMLButtonElement>('[data-action="emergency"]')!;
   const copyButton = form.querySelector<HTMLButtonElement>('[data-action="copy"]')!;
@@ -210,6 +226,29 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
 
   let timeline: Timeline | null = null;
   const playhead = document.createElementNS(SVG_NS, 'line');
+  let preempted = false;
+  /** Safety problem with the timings shown (or being previewed), as text; '' if none. */
+  let warning = '';
+
+  function renderLegend(): void {
+    legend.classList.toggle('is-warning', warning !== '' && !preempted);
+    if (!timeline) legend.textContent = t('timeline.flashing');
+    else if (preempted) legend.textContent = t('timeline.preempted');
+    else legend.textContent = warning || t('timeline.legend');
+  }
+
+  const seconds = (v: number) => String(Math.round(v * 10) / 10);
+
+  /** Describe the first conflict and which green times would be safe for this signal. */
+  function describe(issues: SafetyIssue[]): string {
+    const first = issues[0];
+    const vars = { from: seconds(first.from), to: seconds(first.to) };
+    const what = t(first.kind === 'overlap' ? 'safety.overlap' : 'safety.tight', vars);
+    const total = open + closed;
+    const range = safeOpenRange(total, (o) => cb.timeline({ index: selected, timing: { open: o, closed: total - o } }), MAX_SECONDS);
+    const hint = range ? t('safety.range', { n: selected + 1, min: range.min, max: range.max }) : t('safety.none');
+    return `${what} ${hint}`;
+  }
 
   function drawTimeline(): void {
     const current = cb.timing(selected);
@@ -218,14 +257,23 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     svg.replaceChildren();
     svg.insertAdjacentHTML(
       'afterbegin',
-      `<defs><linearGradient id="tl-ry" x1="0" y1="0" x2="0" y2="1"><stop offset="0.5" stop-color="#d6302a"/><stop offset="0.5" stop-color="#f2c200"/></linearGradient></defs>`,
+      `<defs><linearGradient id="tl-ry" x1="0" y1="0" x2="0" y2="1"><stop offset="0.5" stop-color="#e5484d"/><stop offset="0.5" stop-color="#f5c518"/></linearGradient></defs>`,
     );
     svg.classList.toggle('is-preview', pending);
     if (!timeline) {
-      legend.textContent = t('timeline.flashing');
+      warning = '';
+      applyButton.disabled = false;
+      applyButton.removeAttribute('title');
+      renderLegend();
       return;
     }
-    legend.textContent = t('timeline.legend');
+    const issues = analyzeTimeline(timeline);
+    warning = issues.length ? describe(issues) : '';
+    // Unsafe timings can't be applied; Defaults and changing the value still work.
+    applyButton.disabled = issues.length > 0;
+    if (issues.length) applyButton.title = t('safety.blocked');
+    else applyButton.removeAttribute('title');
+    renderLegend();
     const scale = (TL_WIDTH - TL_LABEL) / timeline.cycle;
     timeline.rows.forEach((row, i) => {
       const y = i * (TL_ROW + TL_GAP);
@@ -246,6 +294,15 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     }
     ticks.push(`<text x="${TL_WIDTH}" y="${axisY}" class="tl-tick tl-end">${timeline.cycle} s</text>`);
     svg.insertAdjacentHTML('beforeend', ticks.join(''));
+    for (const issue of issues) {
+      const band = document.createElementNS(SVG_NS, 'rect');
+      svg.appendChild(band);
+      band.setAttribute('class', `tl-issue tl-issue-${issue.kind}`);
+      band.setAttribute('x', (TL_LABEL + issue.from * scale).toFixed(2));
+      band.setAttribute('y', '-1');
+      band.setAttribute('width', Math.max(1.5, (issue.to - issue.from) * scale).toFixed(2));
+      band.setAttribute('height', String(5 * (TL_ROW + TL_GAP) - 1));
+    }
     playhead.setAttribute('class', 'tl-playhead');
     playhead.setAttribute('y1', '-1');
     playhead.setAttribute('y2', String(5 * (TL_ROW + TL_GAP) - 1));
@@ -340,6 +397,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     if (range.type !== 'range' || !range.dataset.setting) return;
     const value = Number(range.value);
     range.nextElementSibling!.textContent = range.value;
+    range.style.setProperty('--p', fill(value, Number(range.max)));
     const key = range.dataset.setting;
     if (key === 'pedestrians') cb.store.set({ pedestrians: value });
     else cb.store.set({ cars: { ...cb.store.get().cars, [key]: value } });
@@ -369,6 +427,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
       const key = range.dataset.setting!;
       const value = key === 'pedestrians' ? s.pedestrians : s.cars[key];
       range.value = String(value);
+      range.style.setProperty('--p', fill(value, Number(range.max)));
       range.nextElementSibling!.textContent = String(value);
     }
   }
@@ -379,7 +438,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   });
   onLangChange(() => {
     sync(cb.store.get());
-    drawTimeline();
+    drawTimeline(); // also redraws the warning in the new language
     lastRush = lastPreempted = null; // redraw state-dependent labels on the next frame
   });
 
@@ -410,8 +469,9 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
       playhead.style.display = position === null ? 'none' : '';
       if (state.preempted !== lastPreempted) {
         lastPreempted = state.preempted;
+        preempted = state.preempted;
         svg.classList.toggle('is-preempted', state.preempted);
-        if (timeline) legend.textContent = t(state.preempted ? 'timeline.preempted' : 'timeline.legend');
+        renderLegend();
       }
       if (state.rush !== lastRush) {
         lastRush = state.rush;

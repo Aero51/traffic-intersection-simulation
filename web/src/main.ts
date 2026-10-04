@@ -1,5 +1,6 @@
 import './style.css';
 import './features.css';
+import './menu.css';
 import { SCENE_HEIGHT, SCENE_WIDTH, SIGNALS, TIPKALO } from './layout';
 import { Signal, createSignalDefs } from './signals';
 import { PLAN_TIMINGS, type SimSnapshot } from './sim';
@@ -13,10 +14,13 @@ import { applyLanguage, createLanguageSwitch, lang, onLangChange, t, type String
 import { World } from './world';
 import { DEFAULT_SETTINGS, SPEEDS, Store, readUrl, writeUrl, type Settings } from './settings';
 import { DAY_MINUTES_PER_SECOND, MAX_BOOSTED_CARS, RUSH_FACTOR, RUSH_SECONDS, darkness, demandFactor, formatClock } from './day';
-import { createAnnouncer, createBenchDialog, createHelpDialog, createToolbar, toggleFullscreen } from './ui';
+import { createAnnouncer, createHelpDialog, createToolbar, toggleFullscreen } from './ui';
+import { createAnalysisDialog } from './analysis';
 import { createStatsPanel } from './stats-panel';
+import { createChartDialog } from './charts';
 import { Countdowns, DebugLayer, Environment, FollowView, SignalTooltip } from './overlays';
 import { Sound } from './sound';
+import { checkTimings } from './safety';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -90,7 +94,10 @@ const fromUrl = readUrl();
 const store = new Store(fromUrl.settings);
 const world = new World();
 const { sim, traffic, pedestrians, controller, stats } = world;
-if (fromUrl.timings) sim.setPlanTimings(fromUrl.timings.plan, fromUrl.timings.timings);
+// A shared link may carry timings that let both roads through at once: ignore those.
+if (fromUrl.timings && checkTimings(fromUrl.timings.plan, fromUrl.timings.timings).length === 0) {
+  sim.setPlanTimings(fromUrl.timings.plan, fromUrl.timings.timings);
+}
 
 /** Seconds of simulated time since the page loaded (pauses and speed applied). */
 let clock = 0;
@@ -214,8 +221,8 @@ svg.addEventListener('click', (e) => {
 
 createLanguageSwitch(main);
 const help = createHelpDialog();
-const bench = createBenchDialog(
-  () => ({
+const bench = createAnalysisDialog({
+  config: () => ({
     plan: sim.plan,
     timings: { normal: sim.planTimings('normal'), secondary: sim.planTimings('secondary') },
     cars: { ...store.get().cars },
@@ -224,10 +231,17 @@ const bench = createBenchDialog(
     minutes: 10,
     seed: 20251004,
   }),
-  (strategy) => store.set({ control: strategy }),
-);
+  strategy: () => controller.strategy,
+  onUse: (strategy) => store.set({ control: strategy }),
+  onApplyTimings: (plan, timings) => {
+    sim.setPlanTimings(plan, timings);
+    menu.refresh();
+    scheduleUrl();
+  },
+});
 createToolbar(main, store, { onStep: stepOnce, onHelp: help.open });
-const statsPanel = createStatsPanel(main, stats, store, bench.open);
+const charts = createChartDialog(stats);
+const statsPanel = createStatsPanel(main, stats, store, { onCompare: bench.open, onCharts: charts.open });
 
 // ---------------------------------------------------------------- actions
 
@@ -352,6 +366,12 @@ document.addEventListener('keydown', (e) => {
     case 's': case 'S':
       store.set({ stats: !s.stats });
       break;
+    case 'c': case 'C':
+      charts.toggle();
+      break;
+    case 'o': case 'O':
+      bench.open();
+      break;
     case 'e': case 'E':
       sendAmbulance();
       break;
@@ -456,6 +476,7 @@ function frame(now: number): void {
   if (now - lastStats > 250) {
     lastStats = now;
     statsPanel.render();
+    charts.render();
   }
   if (s.sound) {
     const moving = traffic.cars.reduce((sum, c) => sum + c.v, 0);

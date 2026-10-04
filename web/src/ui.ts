@@ -3,9 +3,6 @@
 
 import { SPEEDS, type Store } from './settings';
 import { applyLanguage, num, onLangChange, t, type StringKey } from './i18n';
-import { CONTROL_STRATEGIES, type ControlStrategy } from './controller';
-import type { BenchConfig, BenchResult } from './bench';
-import type { BenchRequest } from './bench.worker';
 
 const ICONS = {
   play: '<path d="M4 2.5v11l9-5.5z" fill="currentColor" stroke="none"/>',
@@ -86,7 +83,7 @@ export function toggleFullscreen(): void {
   else document.documentElement.requestFullscreen().catch(() => {});
 }
 
-function createDialog(cls: string, title: StringKey): { dialog: HTMLDialogElement; body: HTMLElement } {
+export function createDialog(cls: string, title: StringKey): { dialog: HTMLDialogElement; body: HTMLElement } {
   const dialog = document.createElement('dialog');
   dialog.className = `dialog ${cls}`;
   dialog.innerHTML = `
@@ -112,6 +109,8 @@ const KEYS: [string, StringKey][] = [
   ['E', 'key.emergency'],
   ['H', 'key.rush'],
   ['S', 'key.stats'],
+  ['C', 'key.charts'],
+  ['O', 'key.analysis'],
   ['N', 'key.night'],
   ['R', 'key.rain'],
   ['M', 'key.sound'],
@@ -130,146 +129,6 @@ export function createHelpDialog(): { open(): void; toggle(): void } {
   return {
     open: () => dialog.showModal(),
     toggle: () => (dialog.open ? dialog.close() : dialog.showModal()),
-  };
-}
-
-/** "Usporedi upravljanja": run each strategy in its own worker and show a results table. */
-export function createBenchDialog(config: () => BenchConfig, onUse: (strategy: ControlStrategy) => void): { open(): void } {
-  const { dialog, body } = createDialog('bench-dialog', 'bench.title');
-  body.innerHTML = `
-    <p class="bench-intro"></p>
-    <div class="bench-controls">
-      <label><span data-i18n="bench.minutes"></span>
-        <select class="bench-minutes"><option>5</option><option selected>10</option><option>20</option><option>30</option></select>
-      </label>
-      <button type="button" class="menu-apply bench-run" data-i18n="bench.run"></button>
-    </div>
-    <table class="bench-table">
-      <thead><tr>
-        <th scope="col" data-i18n="bench.strategy"></th>
-        <th scope="col" data-i18n="bench.avgWait"></th>
-        <th scope="col" data-i18n="bench.maxWait"></th>
-        <th scope="col" data-i18n="bench.throughput"></th>
-        <th scope="col" data-i18n="bench.maxQueue"></th>
-        <th scope="col" data-i18n="bench.pedWait"></th>
-        <th scope="col"><span class="visually-hidden" data-i18n="bench.use"></span></th>
-      </tr></thead>
-      <tbody>${CONTROL_STRATEGIES.map((s) => `
-        <tr data-strategy="${s}">
-          <th scope="row" data-i18n="control.${s}"></th>
-          <td colspan="5"><div class="bench-progress"><div></div></div></td>
-          <td><button type="button" class="bench-use" data-i18n="bench.use" disabled></button></td>
-        </tr>`).join('')}
-      </tbody>
-    </table>`;
-  applyLanguage(dialog);
-
-  const intro = body.querySelector<HTMLElement>('.bench-intro')!;
-  const minutes = body.querySelector<HTMLSelectElement>('.bench-minutes')!;
-  const run = body.querySelector<HTMLButtonElement>('.bench-run')!;
-  const showIntro = () => (intro.textContent = t('bench.intro', { n: minutes.value }));
-  minutes.addEventListener('change', showIntro);
-  onLangChange(showIntro);
-  showIntro();
-
-  let workers: Worker[] = [];
-  let results: BenchResult[] = [];
-
-  const row = (s: ControlStrategy) => body.querySelector<HTMLTableRowElement>(`tr[data-strategy="${s}"]`)!;
-
-  function resetRows(): void {
-    for (const s of CONTROL_STRATEGIES) {
-      const r = row(s);
-      r.querySelectorAll('td.result').forEach((td) => td.remove());
-      let cell = r.querySelector<HTMLTableCellElement>('td[colspan]');
-      if (!cell) {
-        cell = document.createElement('td');
-        cell.colSpan = 5;
-        cell.innerHTML = '<div class="bench-progress"><div></div></div>';
-        r.insertBefore(cell, r.lastElementChild);
-      }
-      cell.querySelector<HTMLElement>('.bench-progress > div')!.style.width = '0%';
-      r.querySelector<HTMLButtonElement>('.bench-use')!.disabled = true;
-      r.classList.remove('is-best');
-    }
-  }
-
-  function showResults(): void {
-    const best = (key: keyof BenchResult, higher = false) => {
-      const values = results.map((r) => r[key] as number);
-      return higher ? Math.max(...values) : Math.min(...values);
-    };
-    const bestWait = best('avgWait');
-    for (const r of results) {
-      const tr = row(r.strategy);
-      tr.querySelector('td[colspan]')?.remove();
-      const cells: [number, keyof BenchResult, boolean, number][] = [
-        [r.avgWait, 'avgWait', false, 1],
-        [r.maxWait, 'maxWait', false, 0],
-        [r.throughput, 'throughput', true, 1],
-        [r.maxQueue, 'maxQueue', false, 0],
-        [r.pedAvgWait, 'pedAvgWait', false, 1],
-      ];
-      for (const [value, key, higher, digits] of cells) {
-        const td = document.createElement('td');
-        td.className = 'result';
-        td.textContent = num(value, digits) + (key.includes('Wait') ? ' s' : '');
-        if (Math.abs(value - best(key, higher)) < 1e-9) td.classList.add('is-best');
-        tr.insertBefore(td, tr.lastElementChild);
-      }
-      tr.classList.toggle('is-best', Math.abs(r.avgWait - bestWait) < 1e-9);
-      tr.querySelector<HTMLButtonElement>('.bench-use')!.disabled = false;
-    }
-  }
-
-  run.addEventListener('click', () => {
-    for (const w of workers) w.terminate();
-    workers = [];
-    results = [];
-    resetRows();
-    run.disabled = true;
-    run.textContent = t('bench.running');
-    const cfg = { ...config(), minutes: Number(minutes.value) };
-    for (const strategy of CONTROL_STRATEGIES) {
-      const worker = new Worker(new URL('./bench.worker.ts', import.meta.url), { type: 'module' });
-      workers.push(worker);
-      worker.onmessage = (e: MessageEvent<{ type: 'progress'; fraction: number } | { type: 'done'; result: BenchResult }>) => {
-        if (e.data.type === 'progress') {
-          row(strategy).querySelector<HTMLElement>('.bench-progress > div')!.style.width = `${(e.data.fraction * 100).toFixed(0)}%`;
-          return;
-        }
-        results.push(e.data.result);
-        worker.terminate();
-        if (results.length === CONTROL_STRATEGIES.length) {
-          run.disabled = false;
-          run.textContent = t('bench.run');
-          showResults();
-        }
-      };
-      worker.postMessage({ config: cfg, strategy } satisfies BenchRequest);
-    }
-  });
-
-  body.addEventListener('click', (e) => {
-    const use = (e.target as Element).closest<HTMLButtonElement>('.bench-use');
-    if (!use) return;
-    onUse(use.closest<HTMLTableRowElement>('tr')!.dataset.strategy as ControlStrategy);
-    dialog.close();
-  });
-  dialog.addEventListener('close', () => {
-    for (const w of workers) w.terminate();
-    workers = [];
-    if (results.length < CONTROL_STRATEGIES.length) {
-      run.disabled = false;
-      run.textContent = t('bench.run');
-    }
-  });
-
-  return {
-    open: () => {
-      showIntro();
-      dialog.showModal();
-    },
   };
 }
 

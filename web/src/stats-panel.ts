@@ -15,7 +15,12 @@ function sparkline(history: number[], max: number): string {
   return `<polyline points="${pts}"/><polygon points="${x(0).toFixed(1)},${SPARK_H} ${pts} ${SPARK_W},${SPARK_H}"/>`;
 }
 
-export function createStatsPanel(parent: HTMLElement, stats: Stats, store: Store, onCompare: () => void): { render(): void } {
+export function createStatsPanel(
+  parent: HTMLElement,
+  stats: Stats,
+  store: Store,
+  handlers: { onCompare(): void; onCharts(): void },
+): { render(): void } {
   const panel = document.createElement('section');
   panel.className = 'stats-panel';
   panel.setAttribute('aria-labelledby', 'stats-title');
@@ -44,7 +49,10 @@ export function createStatsPanel(parent: HTMLElement, stats: Stats, store: Store
       </tbody>
     </table>
     <p class="stats-peds"><span data-i18n="stats.peds"></span>: <span class="ped-wait"></span></p>
-    <button type="button" class="stats-compare menu-apply" data-i18n="stats.compare"></button>`;
+    <div class="stats-buttons">
+      <button type="button" class="stats-charts menu-apply" data-i18n="stats.charts"></button>
+      <button type="button" class="stats-compare menu-apply" data-i18n="stats.compare"></button>
+    </div>`;
   parent.appendChild(panel);
   applyLanguage(panel);
 
@@ -53,7 +61,8 @@ export function createStatsPanel(parent: HTMLElement, stats: Stats, store: Store
     stats.reset();
     render();
   });
-  panel.querySelector('.stats-compare')!.addEventListener('click', onCompare);
+  panel.querySelector('.stats-compare')!.addEventListener('click', handlers.onCompare);
+  panel.querySelector('.stats-charts')!.addEventListener('click', handlers.onCharts);
 
   const show = () => panel.classList.toggle('is-open', store.get().stats);
   store.subscribe(show);

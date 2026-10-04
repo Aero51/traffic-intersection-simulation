@@ -10,6 +10,9 @@ const WINDOW = 60;
 /** One queue-length sample per this many seconds, for the sparklines. */
 const SAMPLE_EVERY = 1;
 export const HISTORY = 120;
+/** One point of the whole-run charts per this many seconds, and how many are kept. */
+export const SERIES_EVERY = 5;
+const SERIES_MAX = 2000;
 
 export interface ApproachStats {
   id: string;
@@ -23,6 +26,20 @@ export interface ApproachStats {
   history: number[];
   /** Times (stats clock) of recent stop-line crossings. */
   recent: number[];
+}
+
+/** One point of the whole-run charts: figures for the last minute, taken every SERIES_EVERY s. */
+export interface Sample {
+  /** Seconds since the statistics started. */
+  t: number;
+  /** Cars per minute through the junction. */
+  flow: number;
+  /** Cars standing before the stop line right now. */
+  queue: number;
+  /** Average wait of cars that crossed the stop line in the last minute (null if none did). */
+  wait: number | null;
+  /** Average kerb wait of pedestrians who set off in the last minute (null if none did). */
+  pedWait: number | null;
 }
 
 export interface StatsSummary {
@@ -44,7 +61,12 @@ export class Stats {
   pedMaxWait = 0;
   /** Most cars queueing on all approaches at once. */
   maxTotalQueue = 0;
+  /** The whole run, for the charts and the CSV export. */
+  series: Sample[] = [];
   private sampleTimer = 0;
+  private seriesTimer = 0;
+  private recentWaits: { t: number; w: number }[] = [];
+  private recentPeds: { t: number; w: number }[] = [];
 
   constructor(groups: readonly TrafficGroup[]) {
     this.approaches = groups.map((g) => ({
@@ -63,7 +85,10 @@ export class Stats {
   reset(): void {
     this.time = 0;
     this.pedCount = this.pedTotalWait = this.pedMaxWait = this.maxTotalQueue = 0;
-    this.sampleTimer = 0;
+    this.sampleTimer = this.seriesTimer = 0;
+    this.series = [];
+    this.recentWaits = [];
+    this.recentPeds = [];
     for (const a of this.approaches) {
       a.passed = a.totalWait = a.maxWait = a.queue = a.maxQueue = 0;
       a.history = [];
@@ -80,11 +105,13 @@ export class Stats {
       a.totalWait += e.wait;
       a.maxWait = Math.max(a.maxWait, e.wait);
       a.recent.push(this.time);
+      this.recentWaits.push({ t: this.time, w: e.wait });
     }
     for (const w of pedestrians.drainWaits()) {
       this.pedCount++;
       this.pedTotalWait += w;
       this.pedMaxWait = Math.max(this.pedMaxWait, w);
+      this.recentPeds.push({ t: this.time, w });
     }
     for (const a of this.approaches) {
       a.queue = traffic.queued(a.lanes);
@@ -92,6 +119,11 @@ export class Stats {
       while (a.recent.length && a.recent[0] < this.time - WINDOW) a.recent.shift();
     }
     this.maxTotalQueue = Math.max(this.maxTotalQueue, this.approaches.reduce((n, a) => n + a.queue, 0));
+    this.seriesTimer += dt;
+    if (this.seriesTimer >= SERIES_EVERY) {
+      this.seriesTimer -= SERIES_EVERY;
+      this.takeSample();
+    }
     this.sampleTimer += dt;
     if (this.sampleTimer >= SAMPLE_EVERY) {
       this.sampleTimer -= SAMPLE_EVERY;
@@ -100,6 +132,49 @@ export class Stats {
         if (a.history.length > HISTORY) a.history.shift();
       }
     }
+  }
+
+  private takeSample(): void {
+    const from = this.time - WINDOW;
+    const recent = <T extends { t: number }>(list: T[]) => {
+      while (list.length && list[0].t < from) list.shift();
+      return list;
+    };
+    const mean = (list: { w: number }[]) => (list.length ? list.reduce((n, x) => n + x.w, 0) / list.length : null);
+    const waits = recent(this.recentWaits);
+    const peds = recent(this.recentPeds);
+    this.series.push({
+      t: Math.round(this.time * 100) / 100,
+      flow: (waits.length * 60) / Math.max(1, Math.min(WINDOW, this.time)),
+      queue: this.approaches.reduce((n, a) => n + a.queue, 0),
+      wait: mean(waits),
+      pedWait: mean(peds),
+    });
+    if (this.series.length > SERIES_MAX) this.series.shift();
+  }
+
+  /**
+   * Average delay per road user over the whole run, counting cars and pedestrians that are
+   * still waiting when it ends (otherwise a jammed road would look good: nobody got through).
+   */
+  delay(traffic: Traffic, pedestrians: Pedestrians): { delay: number; users: number } {
+    let total = this.pedTotalWait;
+    let users = this.pedCount;
+    for (const a of this.approaches) {
+      total += a.totalWait;
+      users += a.passed;
+    }
+    for (const car of traffic.cars) {
+      if (car.emergency || car.passedLine) continue;
+      total += car.wait;
+      users++;
+    }
+    for (const w of pedestrians.walkers) {
+      if (w.walking) continue;
+      total += w.waited;
+      users++;
+    }
+    return { delay: users ? total / users : 0, users };
   }
 
   /** Cars per minute over the last minute (or since the start, if shorter). */

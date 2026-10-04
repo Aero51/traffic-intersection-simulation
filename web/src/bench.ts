@@ -21,6 +21,9 @@ export interface BenchConfig {
 
 export interface BenchResult extends StatsSummary {
   strategy: ControlStrategy;
+  /** Average delay per road user, counting those still waiting at the end. */
+  delay: number;
+  users: number;
 }
 
 const DT = 1 / 20;
@@ -41,5 +44,5 @@ export function runBench(config: BenchConfig, strategy: ControlStrategy, onProgr
     world.step(DT);
     if (onProgress && i % 400 === 0) onProgress(i / steps);
   }
-  return { strategy, ...world.stats.summary() };
+  return { strategy, ...world.stats.summary(), ...world.stats.delay(traffic, pedestrians) };
 }

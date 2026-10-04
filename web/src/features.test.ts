@@ -8,6 +8,7 @@ import { ROUTE_DEFS, TRAFFIC_GROUPS } from './routes';
 import { DEFAULT_SETTINGS, readUrl } from './settings';
 import { darkness, demandFactor, formatClock } from './day';
 import { seeded } from './random';
+import { World } from './world';
 
 const lamps = (sim: Simulation) => sim.snapshot().vehicles.map(lampKey);
 const green = (l: Lights) => l.green || l.yellow; // anything but red counts as "open" for safety checks
@@ -330,5 +331,37 @@ describe('waiting at red', () => {
     }
     expect(car.passedLine).toBe(true);
     expect(stood).toBeLessThan(0.5);
+  });
+});
+
+describe('chart helpers and export', () => {
+  it('rounds the y axis to clean numbers', async () => {
+    const { niceScale, timeTicks, clockLabel } = await import('./chart-math');
+    expect(niceScale(47)).toEqual({ max: 60, step: 20 });
+    expect(niceScale(9)).toEqual({ max: 10, step: 5 });
+    expect(niceScale(0)).toEqual({ max: 1, step: 1 });
+    expect(niceScale(1.3).max).toBeCloseTo(1.5, 6);
+    expect(timeTicks(60)).toEqual([0, 15, 30, 45, 60]);
+    expect(timeTicks(600).length).toBeLessThanOrEqual(6);
+    expect(clockLabel(75)).toBe('1:15');
+  });
+
+  it('quotes CSV cells and writes the whole-run series', async () => {
+    const { toCsv, seriesCsv, summaryCsv } = await import('./export');
+    expect(toCsv([['a', 'b,c', 'say "hi"', null, 1.23456]])).toBe('a,"b,c","say ""hi""",,1.235\r\n');
+    const world = new World(seeded(2));
+    for (const g of ['istok', 'sjever', 'zapad']) world.traffic.setTarget(g, 6);
+    world.pedestrians.rate = 20;
+    for (let t = 0; t < 130; t += 1 / 20) world.step(1 / 20);
+    expect(world.stats.series.length).toBe(26); // one every 5 s
+    expect(world.stats.series[25].flow).toBeGreaterThan(0);
+    const lines = seriesCsv(world.stats).trim().split('\r\n');
+    expect(lines[0]).toBe('time_s,cars_per_min,queue_cars,avg_car_wait_s,avg_pedestrian_wait_s');
+    expect(lines).toHaveLength(27);
+    const summary = summaryCsv(world.stats);
+    expect(summary).toContain('istok,');
+    expect(summary).toContain('total,');
+    world.stats.reset();
+    expect(world.stats.series).toEqual([]);
   });
 });
