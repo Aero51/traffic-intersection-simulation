@@ -49,6 +49,7 @@ export function createStatsPanel(
       </tbody>
     </table>
     <p class="stats-peds"><span data-i18n="stats.peds"></span>: <span class="ped-wait"></span></p>
+    <p class="stats-peds"><span data-i18n="stats.co2"></span>: <span class="co2"></span></p>
     <div class="stats-buttons">
       <button type="button" class="stats-charts menu-apply" data-i18n="stats.charts"></button>
       <button type="button" class="stats-compare menu-apply" data-i18n="stats.compare"></button>
@@ -97,6 +98,8 @@ export function createStatsPanel(
     panel.querySelector('.ped-wait')!.textContent = stats.pedCount
       ? `${pair(stats.pedTotalWait / stats.pedCount, stats.pedMaxWait)} s`
       : '–';
+    const { co2, idleLitres, litres } = stats.emissions;
+    panel.querySelector('.co2')!.textContent = `${num(co2, 1)} (${num(litres ? (idleLitres / litres) * 100 : 0, 0)} %)`;
   }
   onLangChange(render);
   return { render };

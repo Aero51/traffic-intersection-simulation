@@ -52,12 +52,13 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
             <th scope="col" data-i18n="bench.maxQueue"></th>
             <th scope="col" data-i18n="bench.pedWait"></th>
             <th scope="col" data-i18n="bench.busWait"></th>
+            <th scope="col" data-i18n="bench.co2" data-i18n-title="bench.co2.hint"></th>
             <th scope="col"><span class="visually-hidden" data-i18n="bench.use"></span></th>
           </tr></thead>
           <tbody>${CONTROL_STRATEGIES.map((s) => `
             <tr data-strategy="${s}">
               <th scope="row" data-i18n="control.${s}"></th>
-              <td colspan="6"><div class="bench-progress"><div></div></div></td>
+              <td colspan="7"><div class="bench-progress"><div></div></div></td>
               <td><button type="button" class="bench-use" data-i18n="bench.use" disabled></button></td>
             </tr>`).join('')}
           </tbody>
@@ -124,7 +125,7 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
       let cell = r.querySelector<HTMLTableCellElement>('td[colspan]');
       if (!cell) {
         cell = document.createElement('td');
-        cell.colSpan = 6;
+        cell.colSpan = 7;
         cell.innerHTML = '<div class="bench-progress"><div></div></div>';
         r.insertBefore(cell, r.lastElementChild);
       }
@@ -150,6 +151,7 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
         [r.maxQueue, 'maxQueue', false, 0],
         [r.pedAvgWait, 'pedAvgWait', false, 1],
         [r.busAvgWait, 'busAvgWait', false, 1],
+        [r.co2PerCar, 'co2PerCar', false, 0],
       ];
       for (const [value, key, higher, digits] of cells) {
         const td = document.createElement('td');

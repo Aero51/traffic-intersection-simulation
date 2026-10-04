@@ -4,6 +4,7 @@
 
 import type { TrafficGroup, Traffic } from './traffic';
 import type { Pedestrians } from './pedestrians';
+import { EmissionsMeter } from './emissions';
 
 /** Throughput is counted over this many recent seconds. */
 const WINDOW = 60;
@@ -53,6 +54,8 @@ export interface StatsSummary {
   passed: number;
   /** Average wait of buses at the stop line (0 if none came through). */
   busAvgWait: number;
+  /** Grams of CO2 per car that crossed the stop line (estimate; see emissions.ts). */
+  co2PerCar: number;
 }
 
 export class Stats {
@@ -62,6 +65,7 @@ export class Stats {
   pedTotalWait = 0;
   pedMaxWait = 0;
   busCount = 0;
+  readonly emissions = new EmissionsMeter();
   busTotalWait = 0;
   /** Most cars queueing on all approaches at once. */
   maxTotalQueue = 0;
@@ -89,6 +93,7 @@ export class Stats {
   reset(): void {
     this.time = 0;
     this.pedCount = this.pedTotalWait = this.pedMaxWait = this.maxTotalQueue = this.busCount = this.busTotalWait = 0;
+    this.emissions.reset();
     this.sampleTimer = this.seriesTimer = 0;
     this.series = [];
     this.recentWaits = [];
@@ -102,6 +107,7 @@ export class Stats {
 
   update(dt: number, traffic: Traffic, pedestrians: Pedestrians): void {
     this.time += dt;
+    this.emissions.update(dt, traffic.cars);
     for (const e of traffic.drainEvents()) {
       const a = this.approaches.find((x) => x.id === e.group);
       if (!a || e.emergency) continue;
@@ -207,6 +213,7 @@ export class Stats {
       pedMaxWait: this.pedMaxWait,
       passed,
       busAvgWait: this.busCount ? this.busTotalWait / this.busCount : 0,
+      co2PerCar: passed ? (this.emissions.co2 * 1000) / passed : 0,
     };
   }
 }
