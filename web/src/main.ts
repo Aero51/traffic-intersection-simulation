@@ -14,7 +14,8 @@ import { applyLanguage, createLanguageSwitch, lang, onLangChange, t, type String
 import { World } from './world';
 import { DEFAULT_SETTINGS, SPEEDS, Store, readUrl, writeUrl, type Settings } from './settings';
 import { DAY_MINUTES_PER_SECOND, MAX_BOOSTED_CARS, RUSH_FACTOR, RUSH_SECONDS, darkness, demandFactor, formatClock } from './day';
-import { createAnnouncer, createHelpDialog, createToolbar, toggleFullscreen } from './ui';
+import { createAnnouncer, createHelpDialog, createReplayBar, createToolbar, toggleFullscreen } from './ui';
+import { FRAME_EVERY, Recorder } from './replay';
 import { createAnalysisDialog } from './analysis';
 import { createStatsPanel } from './stats-panel';
 import { createChartDialog } from './charts';
@@ -250,7 +251,42 @@ const bench = createAnalysisDialog({
     scheduleUrl();
   },
 });
-createToolbar(main, store, { onStep: stepOnce, onHelp: help.open });
+const recorder = new Recorder();
+/** Replay: index of the shown frame, or null while live. */
+let replayAt: number | null = null;
+let replayPlaying = false;
+let replayFrameTimer = 0;
+let pausedBeforeReplay = false;
+const replayBar = createReplayBar(main, {
+  onSeek: (i) => {
+    replayAt = i;
+    replayPlaying = false;
+  },
+  onTogglePlay: () => {
+    if (replayAt === null) return;
+    // Pressing play at the end starts again from the oldest frame.
+    if (!replayPlaying && replayAt >= recorder.frames.length - 1) replayAt = 0;
+    replayPlaying = !replayPlaying;
+  },
+  onLive: () => toggleReplay(false),
+});
+function toggleReplay(on = replayAt === null): void {
+  if (on === (replayAt !== null)) return;
+  if (on) {
+    if (recorder.frames.length < 2) return;
+    pausedBeforeReplay = store.get().paused;
+    store.set({ paused: true });
+    replayAt = Math.max(0, recorder.frames.length - 30); // start three seconds back
+    replayPlaying = false;
+    replayFrameTimer = 0;
+    replayBar.open(recorder.frames.length, replayAt);
+  } else {
+    replayAt = null;
+    replayBar.close();
+    if (store.get().paused) store.set({ paused: pausedBeforeReplay });
+  }
+}
+createToolbar(main, store, { onStep: stepOnce, onHelp: help.open, onReplay: toggleReplay });
 const charts = createChartDialog(stats);
 const statsPanel = createStatsPanel(main, stats, store, { onCompare: bench.open, onCharts: charts.open });
 
@@ -414,6 +450,12 @@ document.addEventListener('keydown', (e) => {
     case 'b': case 'B':
       traffic.breakDown();
       break;
+    case 'y': case 'Y':
+      toggleReplay();
+      break;
+    case 'Escape':
+      toggleReplay(false);
+      break;
     case 'h': case 'H':
       startRush();
       break;
@@ -479,6 +521,27 @@ function frame(now: number): void {
     stepRequested = false;
   }
 
+  // A replay ends as soon as the simulation is resumed (Space, the play button).
+  if (replayAt !== null && !s.paused) toggleReplay(false);
+  if (replayAt !== null) {
+    if (replayPlaying) {
+      replayFrameTimer += raw * s.speed;
+      const steps = Math.floor(replayFrameTimer / FRAME_EVERY);
+      if (steps > 0) {
+        replayFrameTimer -= steps * FRAME_EVERY;
+        replayAt = Math.min(recorder.frames.length - 1, replayAt + steps);
+        if (replayAt >= recorder.frames.length - 1) replayPlaying = false;
+      }
+    }
+    const f = recorder.frames[replayAt];
+    render(signals, f.snap);
+    carLayer.render(f.cars);
+    pedestrianLayer.render(f.walkers);
+    replayBar.update(replayAt, recorder.ago(replayAt), replayPlaying);
+    requestAnimationFrame(frame);
+    return;
+  }
+
   if (dt > 0) {
     clock += dt;
     if (s.dayCycle) hour = (hour + (dt * DAY_MINUTES_PER_SECOND) / 60) % 24;
@@ -488,6 +551,7 @@ function frame(now: number): void {
     // Large steps (4x speed) are split so the signal controller reacts in time.
     const parts = Math.ceil(dt / 0.05);
     for (let i = 0; i < parts; i++) world.step(dt / parts);
+    recorder.advance(dt, () => ({ snap: sim.snapshot(), cars: traffic.cars, walkers: pedestrians.walkers }));
   }
 
   const snap = sim.snapshot();

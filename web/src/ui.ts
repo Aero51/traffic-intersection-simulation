@@ -8,6 +8,7 @@ const ICONS = {
   play: '<path d="M4 2.5v11l9-5.5z" fill="currentColor" stroke="none"/>',
   pause: '<path d="M4.5 2.5v11M11.5 2.5v11" stroke-width="2.6"/>',
   step: '<path d="M3 2.5v11l7-5.5z" fill="currentColor" stroke="none"/><path d="M13 2.5v11" stroke-width="2"/>',
+  replay: '<path d="M8 3.2a5 5 0 1 1-4.6 3"/><path d="M3 2.2v4.2h4.2"/>',
   stats: '<path d="M2 14h12M4 12V8M8 12V3M12 12V6" stroke-width="2"/>',
   help: '<circle cx="8" cy="8" r="6.3"/><path d="M6 6.2a2 2 0 1 1 2.8 1.8c-.6.3-.8.7-.8 1.3v.4" /><circle cx="8" cy="11.7" r="0.4" fill="currentColor"/>',
   enter: '<path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"/>',
@@ -19,6 +20,7 @@ const icon = (path: string, cls = '') => `<svg viewBox="0 0 16 16" aria-hidden="
 export interface ToolbarHandlers {
   onStep(): void;
   onHelp(): void;
+  onReplay(): void;
 }
 
 /** Pause / speed / step / statistics / help / full screen, bottom left of the map. */
@@ -31,6 +33,7 @@ export function createToolbar(parent: HTMLElement, store: Store, handlers: Toolb
     <button type="button" class="tool" data-tool="play">${icon(ICONS.pause, 'i-pause')}${icon(ICONS.play, 'i-play')}</button>
     <button type="button" class="tool tool-speed" data-tool="speed" data-i18n-title="tool.speed" data-i18n-aria="tool.speed"></button>
     <button type="button" class="tool" data-tool="step" data-i18n-title="tool.step" data-i18n-aria="tool.step">${icon(ICONS.step)}</button>
+    <button type="button" class="tool" data-tool="replay" data-i18n-title="tool.replay" data-i18n-aria="tool.replay">${icon(ICONS.replay)}</button>
     <button type="button" class="tool" data-tool="stats" data-i18n-title="tool.stats" data-i18n-aria="tool.stats">${icon(ICONS.stats)}</button>
     <button type="button" class="tool" data-tool="help" data-i18n-title="tool.help" data-i18n-aria="tool.help">${icon(ICONS.help)}</button>
     ${document.fullscreenEnabled ? `<button type="button" class="tool" data-tool="fullscreen">${icon(ICONS.enter, 'i-enter')}${icon(ICONS.exit, 'i-exit')}</button>` : ''}`;
@@ -51,6 +54,7 @@ export function createToolbar(parent: HTMLElement, store: Store, handlers: Toolb
     else if (tool === 'step') handlers.onStep();
     else if (tool === 'stats') store.set({ stats: !s.stats });
     else if (tool === 'help') handlers.onHelp();
+    else if (tool === 'replay') handlers.onReplay();
     else if (tool === 'fullscreen') toggleFullscreen();
   });
 
@@ -75,6 +79,62 @@ export function createToolbar(parent: HTMLElement, store: Store, handlers: Toolb
   onLangChange(sync);
   document.addEventListener('fullscreenchange', sync);
   sync();
+}
+
+export interface ReplayBar {
+  /** Show the bar for `frames` recorded frames, starting at `index`. */
+  open(frames: number, index: number): void;
+  close(): void;
+  /** Move the thumb and label (seconds before now) without firing onSeek. */
+  update(index: number, ago: number, playing: boolean): void;
+}
+
+/** Rewind bar above the toolbar: play/pause, a scrubber over the last minute, and "Live". */
+export function createReplayBar(
+  parent: HTMLElement,
+  handlers: { onSeek(index: number): void; onTogglePlay(): void; onLive(): void },
+): ReplayBar {
+  const bar = document.createElement('div');
+  bar.className = 'replay-bar';
+  bar.hidden = true;
+  bar.setAttribute('role', 'group');
+  bar.dataset.i18nAria = 'replay.label';
+  bar.innerHTML = `
+    <button type="button" class="tool" data-replay="play">${icon(ICONS.pause, 'i-pause')}${icon(ICONS.play, 'i-play')}</button>
+    <input type="range" class="replay-range" min="0" max="0" step="1" value="0" data-i18n-aria="replay.scrub" />
+    <span class="replay-time" aria-live="off"></span>
+    <button type="button" class="replay-live" data-i18n="replay.live"></button>`;
+  parent.appendChild(bar);
+  applyLanguage(bar);
+
+  const play = bar.querySelector<HTMLButtonElement>('[data-replay="play"]')!;
+  const range = bar.querySelector<HTMLInputElement>('.replay-range')!;
+  const time = bar.querySelector<HTMLElement>('.replay-time')!;
+  range.addEventListener('input', () => handlers.onSeek(Number(range.value)));
+  play.addEventListener('click', handlers.onTogglePlay);
+  bar.querySelector('.replay-live')!.addEventListener('click', handlers.onLive);
+
+  const setPlaying = (playing: boolean) => {
+    play.classList.toggle('is-paused', !playing);
+    const label = t(playing ? 'tool.pause' : 'tool.play');
+    play.title = label;
+    play.setAttribute('aria-label', label);
+  };
+  return {
+    open(frames, index) {
+      range.max = String(Math.max(0, frames - 1));
+      range.value = String(index);
+      bar.hidden = false;
+    },
+    close() {
+      bar.hidden = true;
+    },
+    update(index, ago, playing) {
+      range.value = String(index);
+      time.textContent = `−${num(ago, 1)} s`;
+      setPlaying(playing);
+    },
+  };
 }
 
 export function toggleFullscreen(): void {
@@ -108,6 +168,7 @@ const KEYS: [string, StringKey][] = [
   ['T', 'key.walk'],
   ['E', 'key.emergency'],
   ['B', 'key.breakdown'],
+  ['Y', 'key.replay'],
   ['H', 'key.rush'],
   ['S', 'key.stats'],
   ['C', 'key.charts'],

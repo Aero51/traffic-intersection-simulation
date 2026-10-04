@@ -954,3 +954,49 @@ kbd {
 .los-D { background: #a16207; }
 .los-E { background: #c2410c; }
 .los-F { background: #b91c1c; }
+
+/* ---- Replay bar (above the toolbar) ---- */
+
+.replay-bar {
+  position: absolute;
+  bottom: 52px;
+  left: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(380px, calc(100% - 20px));
+  padding: 3px 12px 3px 3px;
+  border-radius: 999px;
+  background: rgba(16, 20, 26, 0.82);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  color: #dfe6ee;
+}
+.replay-bar[hidden] {
+  display: none;
+}
+.replay-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: #8ab4ff;
+}
+.replay-time {
+  min-width: 4.2em;
+  font: 600 12px/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.replay-live {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font: 700 11px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+.replay-live:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
+}
