@@ -24,6 +24,8 @@ export interface BenchResult extends StatsSummary {
   /** Average delay per road user, counting those still waiting at the end. */
   delay: number;
   users: number;
+  /** Cars per minute on the busiest main-road direction and on the side road (for the Webster reference). */
+  critical: { main: number; side: number };
 }
 
 const DT = 1 / 20;
@@ -44,5 +46,10 @@ export function runBench(config: BenchConfig, strategy: ControlStrategy, onProgr
     world.step(DT);
     if (onProgress && i % 400 === 0) onProgress(i / steps);
   }
-  return { strategy, ...world.stats.summary(), ...world.stats.delay(traffic, pedestrians) };
+  const flow = (id: string) => {
+    const a = world.stats.approaches.find((x) => x.id === id);
+    return a ? (a.passed * 60) / Math.max(1, world.stats.time) : 0;
+  };
+  const critical = { main: Math.max(flow('istok'), flow('zapad')), side: flow('sjever') };
+  return { strategy, ...world.stats.summary(), ...world.stats.delay(traffic, pedestrians), critical };
 }

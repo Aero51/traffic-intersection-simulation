@@ -15,7 +15,7 @@ const config: BenchConfig = {
 };
 
 const result = (delay: number): BenchResult => ({
-  strategy: 'fixed', throughput: 50, avgWait: delay, maxWait: delay * 3, maxQueue: 6, pedAvgWait: delay, pedMaxWait: delay * 3, passed: 100, busAvgWait: delay, co2PerCar: 100, delay, users: 100,
+  strategy: 'fixed', throughput: 50, avgWait: delay, maxWait: delay * 3, maxQueue: 6, pedAvgWait: delay, pedMaxWait: delay * 3, passed: 100, busAvgWait: delay, co2PerCar: 100, critical: { main: 10, side: 5 }, delay, users: 100,
 });
 
 describe('candidate timings', () => {

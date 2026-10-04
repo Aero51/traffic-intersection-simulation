@@ -10,6 +10,7 @@
 import { ALL_RED, RED_YELLOW, YELLOW, type SignalTiming } from './sim';
 import type { BenchConfig, BenchResult } from './bench';
 import type { ControlStrategy } from './controller';
+import { websterSplit } from './webster';
 
 export interface Candidate {
   /** Cycle length (s). */
@@ -73,6 +74,8 @@ export interface OptimizeOutcome {
   /** The timings in use now and the best found, both from the verification runs. */
   baseline: Scored;
   best: Scored;
+  /** Webster's formula for the traffic seen in the search, measured on the same verification runs. */
+  webster: Scored;
   /** The finalists as the search saw them, best first (a little optimistic: it picked the best). */
   ranking: Scored[];
   /** Fraction of average delay saved by `best` in verification (negative: current is better). */
@@ -108,6 +111,7 @@ function mean(results: BenchResult[]): BenchResult {
     co2PerCar: avg((r) => r.co2PerCar),
     delay: avg((r) => r.delay),
     users: avg((r) => r.users),
+    critical: { main: avg((r) => r.critical.main), side: avg((r) => r.critical.side) },
   };
 }
 
@@ -180,7 +184,9 @@ export async function optimize(
 
   // Pass 3: the best of many noisy runs looks better than it is, so measure it (and the
   // current timings) again on fresh seeds and report those numbers.
-  const [baseline, best] = await stage('verify', [null, ranking[0].candidate], verify);
+  // Webster's formula gets the same verification runs, from the flows the search measured.
+  const reference = websterSplit(ranking[0].result.critical, LOST, MIN_GREEN);
+  const [baseline, best, webster] = await stage('verify', [null, ranking[0].candidate, reference], verify);
   const improvement = baseline.delay > 0 ? (baseline.delay - best.delay) / baseline.delay : 0;
-  return { baseline, best, ranking, improvement, worthIt: improvement >= WORTH_IT };
+  return { baseline, best, webster, ranking, improvement, worthIt: improvement >= WORTH_IT };
 }

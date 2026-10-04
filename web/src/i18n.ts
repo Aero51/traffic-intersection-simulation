@@ -243,6 +243,7 @@ const STRINGS = {
   'opt.step': { hr: 'korak {i} od 3 · {p} %', en: 'step {i} of 3 · {p}%' },
   'opt.current': { hr: 'Trenutno', en: 'Current' },
   'opt.best': { hr: 'Najbolje', en: 'Best found' },
+  'opt.webster': { hr: 'Websterova formula', en: 'Webster formula' },
   'opt.col.main': { hr: 'Zeleno glavna', en: 'Main green' },
   'opt.col.side': { hr: 'Zeleno sporedna', en: 'Side green' },
   'opt.col.cycle': { hr: 'Ciklus', en: 'Cycle' },

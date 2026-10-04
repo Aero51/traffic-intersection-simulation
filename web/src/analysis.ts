@@ -275,8 +275,10 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
     optBody.replaceChildren(
       cells(t('opt.current'), current[0].open, current[4].open, current[0].open + current[0].closed + 3, result.baseline.result),
       cells(t('opt.best'), best.main, best.side, best.cycle, result.best.result),
+      cells(t('opt.webster'), result.webster.candidate.main, result.webster.candidate.side, result.webster.candidate.cycle, result.webster.result),
     );
-    optBody.lastElementChild!.classList.toggle('is-best', result.worthIt);
+    
+    optBody.children[1].classList.toggle('is-best', result.worthIt);
     const pct = num(Math.abs(result.improvement) * 100, 0);
     optVerdict.textContent = result.worthIt
       ? t('opt.verdict.better', { a: num(result.baseline.delay, 1), b: num(result.best.delay, 1), p: pct })
