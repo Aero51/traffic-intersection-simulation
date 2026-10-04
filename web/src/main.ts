@@ -21,6 +21,8 @@ import { createChartDialog } from './charts';
 import { Countdowns, DebugLayer, Environment, FollowView, SignalTooltip } from './overlays';
 import { Sound } from './sound';
 import { checkTimings } from './safety';
+import { PRESETS, parseScenario, presetSettings, scenarioToJson } from './scenarios';
+import { downloadText, stamp } from './export';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -184,6 +186,14 @@ const menu = createMenu(main, {
   onEmergency: sendAmbulance,
   onCopyLink: copyLink,
   onResetAll: resetAll,
+  onPreset: applyPreset,
+  onSaveScenario: () =>
+    downloadText(
+      `scenario-${stamp()}.json`,
+      scenarioToJson(store.get(), { normal: sim.planTimings('normal'), secondary: sim.planTimings('secondary') }),
+      'application/json',
+    ),
+  onLoadScenario: loadScenario,
 });
 
 // Signals: keyboard-focusable (for the tooltip), and 1-5 open their timings.
@@ -274,6 +284,31 @@ async function copyLink(): Promise<boolean> {
     return true;
   } catch {
     window.prompt(t('view.copy'), url);
+    return false;
+  }
+}
+
+function applyPreset(id: string): void {
+  const preset = PRESETS.find((p) => p.id === id);
+  if (!preset) return;
+  store.set(presetSettings(preset));
+  rushUntil = -1;
+  menu.refresh();
+  scheduleUrl();
+}
+
+function loadScenario(text: string): boolean {
+  try {
+    const { settings, timings } = parseScenario(text);
+    for (const plan of ['normal', 'secondary'] as const) {
+      const t = timings[plan];
+      if (t) sim.setPlanTimings(plan, t);
+    }
+    store.set(settings);
+    menu.refresh();
+    scheduleUrl();
+    return true;
+  } catch {
     return false;
   }
 }

@@ -2,6 +2,7 @@
 // with a dot as the decimal mark; a byte-order mark at the start makes Excel read the
 // Croatian letters correctly.
 
+import { levelOfService } from './los';
 import type { Stats } from './stats';
 import type { BenchResult } from './bench';
 
@@ -42,8 +43,8 @@ export function summaryCsv(stats: Stats): string {
 /** Results of the control comparison or the timing search. */
 export function benchCsv(results: BenchResult[]): string {
   return toCsv([
-    ['strategy', 'avg_wait_s', 'longest_wait_s', 'cars_per_min', 'longest_queue', 'avg_pedestrian_wait_s', 'avg_delay_per_user_s'],
-    ...results.map((r) => [r.strategy, r.avgWait, r.maxWait, r.throughput, r.maxQueue, r.pedAvgWait, r.delay]),
+    ['strategy', 'avg_wait_s', 'longest_wait_s', 'cars_per_min', 'longest_queue', 'avg_pedestrian_wait_s', 'avg_delay_per_user_s', 'level_of_service'],
+    ...results.map((r) => [r.strategy, r.avgWait, r.maxWait, r.throughput, r.maxQueue, r.pedAvgWait, r.delay, levelOfService(r.delay)]),
   ]);
 }
 

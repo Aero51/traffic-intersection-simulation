@@ -936,3 +936,21 @@ kbd {
 .opt-table td {
   white-space: nowrap;
 }
+
+/* Level-of-service badge in the control comparison. */
+.los {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 0.3em;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  background: #6b7280;
+}
+.los-A, .los-B { background: #15803d; }
+.los-C { background: #4d7c0f; }
+.los-D { background: #a16207; }
+.los-E { background: #c2410c; }
+.los-F { background: #b91c1c; }

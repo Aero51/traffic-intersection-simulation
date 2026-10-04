@@ -144,6 +144,20 @@ const STRINGS = {
   'view.reset': { hr: 'Vrati sve', en: 'Reset all' },
   'view.reset.hint': { hr: 'Zadana vremena, promet i prikaz', en: 'Default timings, traffic and view' },
 
+  'preset.label': { hr: 'Scenarij', en: 'Scenario' },
+  'preset.hint': { hr: 'Gotov promet: količina vozila, pješaka, vrijeme i upravljanje', en: 'Ready-made traffic: cars, pedestrians, weather and control' },
+  'preset.choose': { hr: 'Odaberi…', en: 'Choose…' },
+  'preset.quiet': { hr: 'Mirna noć', en: 'Quiet night' },
+  'preset.rush': { hr: 'Vršni sat', en: 'Rush hour' },
+  'preset.event': { hr: 'Događaj (bočna cesta)', en: 'Event (side road)' },
+  'preset.rain': { hr: 'Kišno jutro', en: 'Rainy commute' },
+  'preset.school': { hr: 'Školska zona', en: 'School zone' },
+  'file.save': { hr: 'Spremi u datoteku', en: 'Save to file' },
+  'file.save.hint': { hr: 'Spremi postavke i vremena kao JSON', en: 'Save settings and timings as JSON' },
+  'file.load': { hr: 'Učitaj datoteku', en: 'Load file' },
+  'file.load.hint': { hr: 'Učitaj spremljeni scenarij', en: 'Load a saved scenario' },
+  'file.bad': { hr: 'Ovo nije datoteka scenarija.', en: 'That is not a scenario file.' },
+
   // Toolbar
   'tool.pause': { hr: 'Pauza (razmaknica)', en: 'Pause (Space)' },
   'tool.play': { hr: 'Pokreni (razmaknica)', en: 'Play (Space)' },
@@ -186,6 +200,10 @@ const STRINGS = {
   'bench.throughput': { hr: 'voz/min', en: 'cars/min' },
   'bench.maxQueue': { hr: 'Najdulja kolona', en: 'Longest queue' },
   'bench.pedWait': { hr: 'Pješaci čekaju', en: 'Ped. wait' },
+  'bench.los': {
+    hr: 'Razina usluge (A–F) prema prosječnom kašnjenju od {delay} s po sudioniku',
+    en: 'Level of service (A–F) from the average delay of {delay} s per road user',
+  },
   'bench.best': { hr: 'najbolje', en: 'best' },
   'bench.use': { hr: 'Koristi', en: 'Use' },
   'bench.minutes': { hr: 'Trajanje (min)', en: 'Length (min)' },

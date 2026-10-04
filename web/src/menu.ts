@@ -1,6 +1,7 @@
 // "Izbornik": the sliding settings panel from GlavnaKlasa.start() (iphoneMenu group),
 // now with three tabs: signal timings, traffic, and view options.
 
+import { PRESETS } from './scenarios';
 import { VEHICLE_COUNT, type SignalTiming, type Timeline } from './sim';
 import { MAX_CARS, type TrafficSlider } from './routes';
 import { CONTROL_STRATEGIES } from './controller';
@@ -23,6 +24,10 @@ export interface MenuCallbacks {
   onEmergency(): void;
   onCopyLink(): Promise<boolean>;
   onResetAll(): void;
+  onPreset(id: string): void;
+  onSaveScenario(): void;
+  /** Load a scenario file's text; false if it is not a scenario. */
+  onLoadScenario(text: string): boolean;
 }
 
 export interface Menu {
@@ -135,6 +140,13 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
           ${slider('pedestrians', 'traffic.ped', 'traffic.ped.desc', 'traffic.ped.unit', MAX_PEDESTRIAN_RATE, s0.pedestrians)}
         </fieldset>
         <div class="menu-card">
+          <div class="menu-row">
+            <label for="menu-preset" data-i18n="preset.label" data-i18n-title="preset.hint"></label>
+            <select id="menu-preset" data-preset data-i18n-title="preset.hint">
+              <option value="" data-i18n="preset.choose"></option>
+              ${PRESETS.map((p) => `<option value="${p.id}" data-i18n="preset.${p.id}"></option>`).join('')}
+            </select>
+          </div>
           ${check('variety', 'traffic.variety')}
           ${check('drivers', 'traffic.drivers', 'traffic.drivers.hint')}
           ${check('dayCycle', 'traffic.day', 'traffic.day.hint')}
@@ -161,6 +173,11 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
           <div class="menu-toolbar">
             <button type="button" class="menu-apply" data-action="copy" data-i18n="view.copy" data-i18n-title="view.copy.hint"></button>
             <button type="button" class="menu-apply menu-secondary" data-action="reset" data-i18n="view.reset" data-i18n-title="view.reset.hint"></button>
+          </div>
+          <div class="menu-toolbar">
+            <button type="button" class="menu-apply menu-secondary" data-action="save" data-i18n="file.save" data-i18n-title="file.save.hint"></button>
+            <button type="button" class="menu-apply menu-secondary" data-action="load" data-i18n="file.load" data-i18n-title="file.load.hint"></button>
+            <input type="file" accept="application/json,.json" data-scenario-file hidden />
           </div>
         </div>
       </div>
@@ -372,6 +389,8 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     } else if (action === 'rush') cb.onRush();
     else if (action === 'emergency') cb.onEmergency();
     else if (action === 'reset') cb.onResetAll();
+    else if (action === 'save') cb.onSaveScenario();
+    else if (action === 'load') scenarioFile.click();
     else if (action === 'copy') {
       cb.onCopyLink().then((ok) => {
         if (!ok) return;
@@ -379,6 +398,20 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
         setTimeout(() => (copyButton.textContent = t('view.copy')), 1500);
       });
     }
+  });
+
+  const presetSelect = form.querySelector<HTMLSelectElement>('select[data-preset]')!;
+  presetSelect.addEventListener('change', () => {
+    if (presetSelect.value) cb.onPreset(presetSelect.value);
+    presetSelect.value = '';
+  });
+  const scenarioFile = form.querySelector<HTMLInputElement>('input[data-scenario-file]')!;
+  scenarioFile.addEventListener('change', async () => {
+    const file = scenarioFile.files?.[0];
+    scenarioFile.value = '';
+    if (!file) return;
+    const ok = cb.onLoadScenario(await file.text());
+    if (!ok) window.alert(t('file.bad'));
   });
 
   inputs.signal.addEventListener('change', () => {

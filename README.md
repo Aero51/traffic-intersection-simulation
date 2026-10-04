@@ -10,9 +10,9 @@ originally as a final-year project. The repository holds two versions:
 
 ## Web version
 
-Features: fixed-time, induction-loop (automatic) and adaptive control, pedestrian phases,
+Features: fixed-time, induction-loop (automatic), actuated and queue-based control, pedestrian phases,
 buses / lorries / motorbikes / ambulance, day–night cycle with rush hours, rain, statistics and
-charts, timing safety check, best-timings search, CSV export, Croatian/English UI, and settings
+charts, level-of-service grades, timing safety check, best-timings search, scenario presets and JSON save/load, CSV export, Croatian/English UI, and settings
 shareable through the URL.
 
 ```sh

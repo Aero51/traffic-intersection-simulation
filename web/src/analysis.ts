@@ -11,6 +11,7 @@ import type { BenchRequest } from './bench.worker';
 import type { Plan, SignalTiming } from './sim';
 import { optimize, timingsFor, type OptimizeOutcome } from './optimizer';
 import { BenchPool } from './pool';
+import { levelOfService } from './los';
 import { benchCsv, downloadText, stamp } from './export';
 
 export interface AnalysisHandlers {
@@ -152,6 +153,14 @@ export function createAnalysisDialog(handlers: AnalysisHandlers): { open(): void
         const td = document.createElement('td');
         td.className = 'result';
         td.textContent = num(value, digits) + (key.includes('Wait') ? ' s' : '');
+        if (key === 'avgWait') {
+          const grade = levelOfService(r.delay);
+          const badge = document.createElement('span');
+          badge.className = `los los-${grade}`;
+          badge.textContent = grade;
+          badge.title = t('bench.los', { delay: num(r.delay, 1) });
+          td.append(' ', badge);
+        }
         if (Math.abs(value - best(key, higher)) < 1e-9) td.classList.add('is-best');
         tr.insertBefore(td, tr.lastElementChild);
       }
