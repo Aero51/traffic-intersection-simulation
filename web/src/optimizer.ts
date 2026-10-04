@@ -104,6 +104,7 @@ function mean(results: BenchResult[]): BenchResult {
     pedAvgWait: avg((r) => r.pedAvgWait),
     pedMaxWait: peak((r) => r.pedMaxWait),
     passed: avg((r) => r.passed),
+    busAvgWait: avg((r) => r.busAvgWait),
     delay: avg((r) => r.delay),
     users: avg((r) => r.users),
   };

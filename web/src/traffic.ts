@@ -59,6 +59,7 @@ export interface PassEvent {
   /** Seconds it stood (or crawled) before the line. */
   wait: number;
   emergency: boolean;
+  kind: VehicleKind;
 }
 
 /** Optional realism, off by default so the model stays simple to test. */
@@ -281,6 +282,11 @@ export class Traffic {
     return this.cars.filter((c) => lanes.includes(c.route.def.lane) && !c.passedLine && c.route.stopAt - c.s <= distance).length;
   }
 
+  /** Buses within `distance` px before their stop line in these lanes (moving or not). */
+  busesApproaching(lanes: readonly string[], distance: number): number {
+    return this.cars.filter((c) => c.kind === 'bus' && lanes.includes(c.route.def.lane) && !c.passedLine && c.route.stopAt - c.s <= distance).length;
+  }
+
   /** An ambulance that has not yet got through the junction, if any. */
   emergencyApproaching(): Car | null {
     return this.cars.find((c) => c.emergency && c.s - c.length < c.route.stopAt + CLEAR_JUNCTION) ?? null;
@@ -437,7 +443,7 @@ export class Traffic {
         // Cars stop exactly on the line, so only count it once they're properly over it.
         if (car.s > route.stopAt + 1) {
           car.passedLine = true;
-          this.events.push({ group: car.group, lane: route.def.lane, wait: car.wait, emergency: car.emergency });
+          this.events.push({ group: car.group, lane: route.def.lane, wait: car.wait, emergency: car.emergency, kind: car.kind });
         }
       }
 

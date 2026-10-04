@@ -51,6 +51,8 @@ export interface StatsSummary {
   pedAvgWait: number;
   pedMaxWait: number;
   passed: number;
+  /** Average wait of buses at the stop line (0 if none came through). */
+  busAvgWait: number;
 }
 
 export class Stats {
@@ -59,6 +61,8 @@ export class Stats {
   pedCount = 0;
   pedTotalWait = 0;
   pedMaxWait = 0;
+  busCount = 0;
+  busTotalWait = 0;
   /** Most cars queueing on all approaches at once. */
   maxTotalQueue = 0;
   /** The whole run, for the charts and the CSV export. */
@@ -84,7 +88,7 @@ export class Stats {
 
   reset(): void {
     this.time = 0;
-    this.pedCount = this.pedTotalWait = this.pedMaxWait = this.maxTotalQueue = 0;
+    this.pedCount = this.pedTotalWait = this.pedMaxWait = this.maxTotalQueue = this.busCount = this.busTotalWait = 0;
     this.sampleTimer = this.seriesTimer = 0;
     this.series = [];
     this.recentWaits = [];
@@ -102,6 +106,10 @@ export class Stats {
       const a = this.approaches.find((x) => x.id === e.group);
       if (!a || e.emergency) continue;
       a.passed++;
+      if (e.kind === 'bus') {
+        this.busCount++;
+        this.busTotalWait += e.wait;
+      }
       a.totalWait += e.wait;
       a.maxWait = Math.max(a.maxWait, e.wait);
       a.recent.push(this.time);
@@ -198,6 +206,7 @@ export class Stats {
       pedAvgWait: this.pedCount ? this.pedTotalWait / this.pedCount : 0,
       pedMaxWait: this.pedMaxWait,
       passed,
+      busAvgWait: this.busCount ? this.busTotalWait / this.busCount : 0,
     };
   }
 }

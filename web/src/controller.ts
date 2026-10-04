@@ -10,9 +10,10 @@ import type { Traffic } from './traffic';
  * demand    - "Automatski režim": the cycle holds while nobody waits at a red light
  * actuated  - green is extended while cars keep arriving, and cut short when the road is empty
  * queue     - the road with the longer queue keeps (or gets) the green
+ * transit   - 'queue', plus buses: green is held for an approaching bus, and called early for one waiting
  */
-export type ControlStrategy = 'fixed' | 'demand' | 'actuated' | 'queue';
-export const CONTROL_STRATEGIES: ControlStrategy[] = ['fixed', 'demand', 'actuated', 'queue'];
+export type ControlStrategy = 'fixed' | 'demand' | 'actuated' | 'queue' | 'transit';
+export const CONTROL_STRATEGIES: ControlStrategy[] = ['fixed', 'demand', 'actuated', 'queue', 'transit'];
 
 /** Lanes stopped by signals 1-4 (main road) and signal 5 (side road). */
 export const PHASE_LANES: Record<Phase, string[]> = {
@@ -28,6 +29,8 @@ export const MAX_GREEN = 25;
 export const MAX_GREEN_WITH_PEDESTRIANS = 20;
 /** Cars this close to a green stop line count as still arriving (actuated). */
 const DETECTION = 110;
+/** Buses are detected further out, so the signal can change in time for them. */
+const BUS_DETECTION = 220;
 
 export class Controller {
   strategy: ControlStrategy = 'fixed';
@@ -75,6 +78,15 @@ export class Controller {
     const pedsWalking = sim.snapshot().pedestrians.some((p) => p.green);
     const otherQueue = traffic.queued(PHASE_LANES[other]) + (pedsFor(other) ? 2 : 0);
 
+    if (this.strategy === 'transit' && !pedsWalking && this.greenFor >= MIN_GREEN) {
+      // A bus on its way to this green gets it held; a bus on its way to the other road
+      // gets the green called early (unless ours is busy with a bus of its own).
+      const ownBus = traffic.busesApproaching(PHASE_LANES[phase], BUS_DETECTION) > 0;
+      const otherBus = traffic.busesApproaching(PHASE_LANES[other], BUS_DETECTION) > 0;
+      if (ownBus && this.greenFor < MAX_GREEN) return 'hold';
+      if (otherBus) return 'end';
+    }
+
     // Nobody needs the other road: rest in green.
     if (otherQueue === 0) return 'hold';
     if (this.greenFor < MIN_GREEN || pedsWalking) return 'run';
@@ -84,7 +96,7 @@ export class Controller {
       const arriving = traffic.approaching(PHASE_LANES[phase], DETECTION) > 0;
       return arriving ? 'hold' : 'end';
     }
-    // 'queue': compare what's waiting on each road.
+    // 'queue' and 'transit': compare what's waiting on each road.
     const ownQueue = traffic.queued(PHASE_LANES[phase]) + traffic.approaching(PHASE_LANES[phase], 60);
     return ownQueue >= otherQueue ? 'hold' : 'end';
   }
