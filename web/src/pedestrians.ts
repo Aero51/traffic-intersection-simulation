@@ -33,6 +33,8 @@ export interface Walker {
   walking: boolean;
   clothes: string;
   hair: string;
+  /** Seconds spent waiting at the kerb. */
+  waited: number;
 }
 
 const WAIT_AT = -0.07;
@@ -45,7 +47,11 @@ export const HAIR = ['#2b1d14', '#111111', '#6d4c2f', '#d9b36c', '#9e9e9e'];
 
 export class Pedestrians {
   walkers: Walker[] = [];
+  /** People arriving on their own, per minute (spread over all four kerbs). */
+  rate = 0;
   private nextId = 1;
+  /** Kerb waits of people who started crossing since the last drainWaits(). */
+  private waits: number[] = [];
 
   constructor(private random: () => number = Math.random) {}
 
@@ -60,19 +66,50 @@ export class Pedestrians {
     }
   }
 
-  /** `mayStepOut` says whether no car is on, or about to reach, a crossing. */
-  step(dt: number, snap: SimSnapshot, mayStepOut: (crossing: Crossing) => boolean = () => true): void {
+  /** One person walks up to a kerb on their own. False if that kerb is already crowded. */
+  arrive(crossing: Crossing, reverse: boolean): boolean {
+    const waiting = this.walkers.filter((w) => w.crossing === crossing && w.reverse === reverse && !w.walking).length;
+    if (waiting >= MAX_WAITING_PER_KERB) return false;
+    this.add(crossing, reverse, waiting);
+    return true;
+  }
+
+  /** How long people waited at the kerb, for everyone who set off since the last call. */
+  drainWaits(): number[] {
+    const out = this.waits;
+    this.waits = [];
+    return out;
+  }
+
+  /**
+   * `mayStepOut` says whether no car is on, or about to reach, a crossing. With `rate` set,
+   * people also turn up by themselves; returns the crossings where someone arrived (and so
+   * pressed the button).
+   */
+  step(dt: number, snap: SimSnapshot, mayStepOut: (crossing: Crossing) => boolean = () => true): Crossing[] {
+    const arrived: Crossing[] = [];
+    if (this.rate > 0 && this.random() < (this.rate / 60) * dt) {
+      const crossing = CROSSINGS[Math.floor(this.random() * CROSSINGS.length)];
+      if (this.arrive(crossing, this.random() < 0.5)) arrived.push(crossing);
+    }
     for (const w of this.walkers) {
       const green = w.crossing.lights.every((i) => snap.pedestrians[i].green);
       // Once on the road, keep going even if the light changes.
-      if (!w.walking && green) w.walking = true;
-      if (!w.walking) continue;
+      if (!w.walking && green) {
+        w.walking = true;
+        this.waits.push(w.waited);
+      }
+      if (!w.walking) {
+        w.waited += dt;
+        continue;
+      }
       let t = w.t + (w.speed * dt) / crossingLength(w.crossing);
       // Wait at the kerb for a car that is already crossing (or can't stop in time).
       if (w.t < KERB && t >= KERB && !mayStepOut(w.crossing)) t = Math.max(w.t, KERB - 1e-4);
       w.t = t;
     }
     this.walkers = this.walkers.filter((w) => w.t < 1.08);
+    return arrived;
   }
 
   private add(crossing: Crossing, reverse: boolean, slot: number): void {
@@ -88,6 +125,7 @@ export class Pedestrians {
       walking: false,
       clothes: CLOTHES[Math.floor(this.random() * CLOTHES.length)],
       hair: HAIR[Math.floor(this.random() * HAIR.length)],
+      waited: 0,
     });
   }
 }

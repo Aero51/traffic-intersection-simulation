@@ -1,25 +1,36 @@
-// "Izbornik": the sliding settings panel from GlavnaKlasa.start() (iphoneMenu group).
+// "Izbornik": the sliding settings panel from GlavnaKlasa.start() (iphoneMenu group),
+// now with three tabs: signal timings, traffic, and view options.
 
-import { VEHICLE_COUNT, type Mode, type SignalTiming } from './sim';
+import { VEHICLE_COUNT, type SignalTiming, type Timeline } from './sim';
 import { MAX_CARS, type TrafficSlider } from './routes';
-import { applyLanguage, type StringKey } from './i18n';
+import { CONTROL_STRATEGIES } from './controller';
+import { MAX_PEDESTRIAN_RATE, type Settings, type Store } from './settings';
+import { applyLanguage, onLangChange, t, type StringKey } from './i18n';
 
 export interface MenuCallbacks {
+  store: Store;
   /** Current timing of a vehicle signal (0-based index), to fill the spinners. */
   timing(index: number): SignalTiming;
-  onModeChange(mode: Mode): void;
   onSelect(index: number | null): void;
   onApply(index: number, timing: SignalTiming): void;
-  /** "Automatski režim": signals only run while a car waits at a red light. */
-  onAutoChange(enabled: boolean): void;
-  /** Car count sliders, applied immediately (no Prihvati needed). */
+  /** Restore the current plan's default timings. */
+  onDefaults(): void;
+  /** Cycle diagram of the current plan, optionally with one signal's timing changed (preview). */
+  timeline(preview?: { index: number; timing: SignalTiming }): Timeline | null;
   trafficGroups: TrafficSlider[];
-  onTrafficChange(groupId: string, cars: number): void;
+  onRush(): void;
+  onEmergency(): void;
+  onCopyLink(): Promise<boolean>;
+  onResetAll(): void;
 }
 
 export interface Menu {
   /** Select a vehicle signal (0-based), e.g. after a click on the map, and open the menu. */
   select(index: number): void;
+  /** Reload the spinners and diagram (timings or mode changed elsewhere). */
+  refresh(): void;
+  /** Per frame: playhead position in the cycle (s), or null when there is no cycle. */
+  frame(position: number | null, state: { preempted: boolean; rush: boolean; emergencyBusy: boolean }): void;
 }
 
 const MIN_SECONDS = 1;
@@ -37,42 +48,107 @@ const spinner = (name: string, label: StringKey, disabled = false) => `
     </div>
   </div>`;
 
-const slider = (g: TrafficSlider) => `
+const slider = (id: string, label: StringKey, description: StringKey, unit: StringKey, max: number, value: number) => `
   <div class="menu-row menu-slider">
-    <label for="traffic-${g.id}" data-i18n="${g.label}" data-i18n-title="${g.description}"></label>
-    <input id="traffic-${g.id}" type="range" min="0" max="${MAX_CARS}" step="1" value="${g.initial}"
-      data-group="${g.id}" data-i18n-aria="${g.description} traffic.count" />
-    <output for="traffic-${g.id}">${g.initial}</output>
+    <label for="traffic-${id}" data-i18n="${label}" data-i18n-title="${description}"></label>
+    <input id="traffic-${id}" type="range" min="0" max="${max}" step="1" value="${value}"
+      data-setting="${id}" data-i18n-aria="${description} ${unit}" />
+    <output for="traffic-${id}">${value}</output>
   </div>`;
 
+const check = (name: keyof Settings, label: StringKey, hint?: StringKey) => `
+  <div class="menu-row">
+    <label for="menu-${name}" data-i18n="${label}" ${hint ? `data-i18n-title="${hint}"` : ''}></label>
+    <input id="menu-${name}" name="${name}" type="checkbox" class="menu-check" data-flag="${name}" />
+  </div>`;
+
+const TABS = ['signals', 'traffic', 'view'] as const;
+type Tab = (typeof TABS)[number];
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const TL_WIDTH = 300;
+const TL_LABEL = 14;
+const TL_ROW = 9;
+const TL_GAP = 2;
+const LAMP_FILL: Record<string, string> = { G: '#2fbf3a', Y: '#f2c200', R: '#d6302a', RY: 'url(#tl-ry)', '': '#cfd4da', '*': '#f2c200' };
+
 export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
+  const s0 = cb.store.get();
   const root = document.createElement('section');
   root.className = 'menu';
   root.innerHTML = `
     <button type="button" class="menu-header" aria-expanded="false" aria-controls="menu-body" data-i18n="menu"></button>
     <form id="menu-body" class="menu-body">
-      <div class="menu-card">
-        <div class="menu-row">
-          <label for="menu-mode" data-i18n="menu.mode"></label>
-          <select id="menu-mode" name="mode">
-            <option value="normal" data-i18n="mode.normal"></option>
-            <option value="secondary" disabled data-i18n="mode.secondary"></option>
-            <option value="flashing" data-i18n="mode.flashing"></option>
-          </select>
-        </div>
-        <div class="menu-row">
-          <label for="menu-auto" data-i18n="menu.auto" data-i18n-title="menu.auto.hint"></label>
-          <input id="menu-auto" name="auto" type="checkbox" class="menu-check" />
-        </div>
-        ${spinner('signal', 'menu.signal')}
-        ${spinner('open', 'menu.open')}
-        ${spinner('closed', 'menu.closed', true)}
-        <div class="menu-toolbar"><button type="submit" class="menu-apply" data-i18n="menu.apply"></button></div>
+      <div class="menu-tabs" role="tablist">
+        ${TABS.map((tab) => `<button type="button" role="tab" id="tab-${tab}" aria-controls="panel-${tab}" data-tab="${tab}" data-i18n="tab.${tab}"></button>`).join('')}
       </div>
-      <fieldset class="menu-card menu-traffic">
-        <legend class="menu-row menu-subhead"><span data-i18n="menu.traffic"></span><span class="menu-unit" data-i18n="menu.traffic.unit"></span></legend>
-        ${cb.trafficGroups.map(slider).join('')}
-      </fieldset>
+
+      <div class="menu-panel" role="tabpanel" id="panel-signals" aria-labelledby="tab-signals">
+        <div class="menu-card">
+          <div class="menu-row">
+            <label for="menu-mode" data-i18n="menu.mode"></label>
+            <select id="menu-mode" name="mode">
+              <option value="normal" data-i18n="mode.normal"></option>
+              <option value="secondary" data-i18n="mode.secondary"></option>
+              <option value="flashing" data-i18n="mode.flashing"></option>
+            </select>
+          </div>
+          <div class="menu-row">
+            <label for="menu-control" data-i18n="menu.control" data-i18n-title="control.hint"></label>
+            <select id="menu-control" name="control" data-i18n-title="control.hint">
+              ${CONTROL_STRATEGIES.map((c) => `<option value="${c}" data-i18n="control.${c}"></option>`).join('')}
+            </select>
+          </div>
+          ${spinner('signal', 'menu.signal')}
+          ${spinner('open', 'menu.open')}
+          ${spinner('closed', 'menu.closed', true)}
+          <div class="menu-timeline">
+            <svg class="timeline" viewBox="0 0 ${TL_WIDTH} ${5 * (TL_ROW + TL_GAP) + 12}" role="img" data-i18n-aria="timeline.aria"></svg>
+            <div class="timeline-legend" data-i18n="timeline.legend"></div>
+          </div>
+          <div class="menu-toolbar">
+            <button type="submit" class="menu-apply" data-i18n="menu.apply"></button>
+            <button type="button" class="menu-apply menu-secondary" data-action="defaults" data-i18n="menu.defaults" data-i18n-title="menu.defaults.hint"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-panel" role="tabpanel" id="panel-traffic" aria-labelledby="tab-traffic" hidden>
+        <fieldset class="menu-card menu-traffic">
+          <legend class="menu-row menu-subhead"><span data-i18n="menu.traffic"></span><span class="menu-unit" data-i18n="menu.traffic.unit"></span></legend>
+          ${cb.trafficGroups.map((g) => slider(g.id, g.label, g.description, 'traffic.count', MAX_CARS, s0.cars[g.id])).join('')}
+          ${slider('pedestrians', 'traffic.ped', 'traffic.ped.desc', 'traffic.ped.unit', MAX_PEDESTRIAN_RATE, s0.pedestrians)}
+        </fieldset>
+        <div class="menu-card">
+          ${check('variety', 'traffic.variety')}
+          ${check('drivers', 'traffic.drivers', 'traffic.drivers.hint')}
+          ${check('dayCycle', 'traffic.day', 'traffic.day.hint')}
+          <div class="menu-toolbar">
+            <button type="button" class="menu-apply" data-action="rush" data-i18n="traffic.rush" data-i18n-title="traffic.rush.hint"></button>
+            <button type="button" class="menu-apply menu-emergency" data-action="emergency" data-i18n="traffic.emergency" data-i18n-title="traffic.emergency.hint"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-panel" role="tabpanel" id="panel-view" aria-labelledby="tab-view" hidden>
+        <div class="menu-card">
+          <div class="menu-row">
+            <label for="menu-weather" data-i18n="view.weather"></label>
+            <select id="menu-weather" name="weather">
+              <option value="dry" data-i18n="weather.dry"></option>
+              <option value="rain" data-i18n="weather.rain"></option>
+            </select>
+          </div>
+          ${check('night', 'view.night')}
+          ${check('sound', 'view.sound')}
+          ${check('stats', 'view.stats')}
+          ${check('debug', 'view.debug')}
+          <div class="menu-toolbar">
+            <button type="button" class="menu-apply" data-action="copy" data-i18n="view.copy" data-i18n-title="view.copy.hint"></button>
+            <button type="button" class="menu-apply menu-secondary" data-action="reset" data-i18n="view.reset" data-i18n-title="view.reset.hint"></button>
+          </div>
+        </div>
+      </div>
     </form>`;
   parent.appendChild(root);
   applyLanguage(root);
@@ -80,6 +156,14 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   const header = root.querySelector<HTMLButtonElement>('.menu-header')!;
   const form = root.querySelector<HTMLFormElement>('form')!;
   const mode = form.querySelector<HTMLSelectElement>('#menu-mode')!;
+  const control = form.querySelector<HTMLSelectElement>('#menu-control')!;
+  const weather = form.querySelector<HTMLSelectElement>('#menu-weather')!;
+  const svg = form.querySelector<SVGSVGElement>('.timeline')!;
+  const legend = form.querySelector<HTMLElement>('.timeline-legend')!;
+  const rushButton = form.querySelector<HTMLButtonElement>('[data-action="rush"]')!;
+  const emergencyButton = form.querySelector<HTMLButtonElement>('[data-action="emergency"]')!;
+  const copyButton = form.querySelector<HTMLButtonElement>('[data-action="copy"]')!;
+  const nightLabel = form.querySelector<HTMLLabelElement>('label[for="menu-night"]')!;
   const inputs = {
     signal: form.querySelector<HTMLInputElement>('#menu-signal')!,
     open: form.querySelector<HTMLInputElement>('#menu-open')!,
@@ -93,6 +177,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
   let open = 0;
   let closed = 0;
   let expanded = false;
+  let tab: Tab = 'signals';
 
   const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -100,6 +185,7 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     inputs.signal.value = String(selected + 1);
     inputs.open.value = String(open);
     inputs.closed.value = String(closed);
+    drawTimeline();
   }
 
   function load(index: number): void {
@@ -120,30 +206,122 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
     show();
   }
 
+  // ------------------------------------------------------------ timeline
+
+  let timeline: Timeline | null = null;
+  const playhead = document.createElementNS(SVG_NS, 'line');
+
+  function drawTimeline(): void {
+    const current = cb.timing(selected);
+    const pending = current.open !== open || current.closed !== closed;
+    timeline = cb.timeline(pending ? { index: selected, timing: { open, closed } } : undefined);
+    svg.replaceChildren();
+    svg.insertAdjacentHTML(
+      'afterbegin',
+      `<defs><linearGradient id="tl-ry" x1="0" y1="0" x2="0" y2="1"><stop offset="0.5" stop-color="#d6302a"/><stop offset="0.5" stop-color="#f2c200"/></linearGradient></defs>`,
+    );
+    svg.classList.toggle('is-preview', pending);
+    if (!timeline) {
+      legend.textContent = t('timeline.flashing');
+      return;
+    }
+    legend.textContent = t('timeline.legend');
+    const scale = (TL_WIDTH - TL_LABEL) / timeline.cycle;
+    timeline.rows.forEach((row, i) => {
+      const y = i * (TL_ROW + TL_GAP);
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('class', `tl-row${i === selected ? ' is-selected' : ''}`);
+      g.innerHTML =
+        `<text x="0" y="${y + TL_ROW - 1.5}" class="tl-label">${i + 1}</text>` +
+        row
+          .map((seg) => `<rect x="${(TL_LABEL + seg.from * scale).toFixed(2)}" y="${y}" width="${Math.max(0.5, (seg.to - seg.from) * scale).toFixed(2)}" height="${TL_ROW}" fill="${LAMP_FILL[seg.lamps] ?? '#ccc'}"><title>${seg.from.toFixed(0)}–${seg.to.toFixed(0)} s</title></rect>`)
+          .join('');
+      svg.appendChild(g);
+    });
+    const axisY = 5 * (TL_ROW + TL_GAP) + 9;
+    const ticks: string[] = [];
+    const step = timeline.cycle > 60 ? 20 : timeline.cycle > 30 ? 10 : 5;
+    for (let s = 0; s <= timeline.cycle; s += step) {
+      ticks.push(`<text x="${(TL_LABEL + s * scale).toFixed(1)}" y="${axisY}" class="tl-tick">${s}</text>`);
+    }
+    ticks.push(`<text x="${TL_WIDTH}" y="${axisY}" class="tl-tick tl-end">${timeline.cycle} s</text>`);
+    svg.insertAdjacentHTML('beforeend', ticks.join(''));
+    playhead.setAttribute('class', 'tl-playhead');
+    playhead.setAttribute('y1', '-1');
+    playhead.setAttribute('y2', String(5 * (TL_ROW + TL_GAP) - 1));
+    svg.appendChild(playhead);
+  }
+
+  // ------------------------------------------------------------ tabs and expand
+
+  function setTab(next: Tab): void {
+    tab = next;
+    for (const b of form.querySelectorAll<HTMLButtonElement>('[data-tab]')) {
+      const on = b.dataset.tab === tab;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    for (const p of form.querySelectorAll<HTMLElement>('.menu-panel')) p.hidden = p.id !== `panel-${tab}`;
+    cb.onSelect(expanded && tab === 'signals' ? selected : null);
+  }
+
   function setExpanded(value: boolean): void {
     expanded = value;
     root.classList.toggle('is-open', value);
     header.setAttribute('aria-expanded', String(value));
     // Keep the hidden (slid-down) controls out of the tab order.
     form.inert = !value;
-    cb.onSelect(value ? selected : null);
+    cb.onSelect(value && tab === 'signals' ? selected : null);
   }
 
   header.addEventListener('click', () => setExpanded(!expanded));
 
-  const auto = form.querySelector<HTMLInputElement>('#menu-auto')!;
-  auto.addEventListener('change', () => cb.onAutoChange(auto.checked));
+  const tabList = form.querySelector<HTMLElement>('.menu-tabs')!;
+  tabList.addEventListener('click', (e) => {
+    const b = (e.target as Element).closest<HTMLButtonElement>('[data-tab]');
+    if (b) setTab(b.dataset.tab as Tab);
+  });
+  tabList.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = (TABS.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
+    setTab(TABS[i]);
+    form.querySelector<HTMLButtonElement>(`[data-tab="${TABS[i]}"]`)!.focus();
+  });
 
-  mode.addEventListener('change', () => {
-    if (mode.value === 'normal' || mode.value === 'flashing') cb.onModeChange(mode.value);
+  // ------------------------------------------------------------ controls -> store
+
+  mode.addEventListener('change', () => cb.store.set({ mode: mode.value as Settings['mode'] }));
+  control.addEventListener('change', () => cb.store.set({ control: control.value as Settings['control'] }));
+  weather.addEventListener('change', () => cb.store.set({ weather: weather.value as Settings['weather'] }));
+
+  form.addEventListener('change', (e) => {
+    const box = e.target as HTMLInputElement;
+    if (box.type === 'checkbox' && box.dataset.flag) cb.store.set({ [box.dataset.flag]: box.checked } as Partial<Settings>);
   });
 
   form.addEventListener('click', (e) => {
-    const button = (e.target as Element).closest<HTMLButtonElement>('button[data-step]');
-    if (!button) return;
-    const step = Number(button.dataset.step);
-    if (button.dataset.for === 'signal') load(clamp(selected + step, 0, VEHICLE_COUNT - 1));
-    if (button.dataset.for === 'open') setOpen(open + step);
+    const target = e.target as Element;
+    const button = target.closest<HTMLButtonElement>('button[data-step]');
+    if (button) {
+      const step = Number(button.dataset.step);
+      if (button.dataset.for === 'signal') load(clamp(selected + step, 0, VEHICLE_COUNT - 1));
+      if (button.dataset.for === 'open') setOpen(open + step);
+      return;
+    }
+    const action = target.closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
+    if (action === 'defaults') {
+      cb.onDefaults();
+      load(selected);
+    } else if (action === 'rush') cb.onRush();
+    else if (action === 'emergency') cb.onEmergency();
+    else if (action === 'reset') cb.onResetAll();
+    else if (action === 'copy') {
+      cb.onCopyLink().then((ok) => {
+        if (!ok) return;
+        copyButton.textContent = t('view.copied');
+        setTimeout(() => (copyButton.textContent = t('view.copy')), 1500);
+      });
+    }
   });
 
   inputs.signal.addEventListener('change', () => {
@@ -159,23 +337,91 @@ export function createMenu(parent: HTMLElement, cb: MenuCallbacks): Menu {
 
   form.addEventListener('input', (e) => {
     const range = e.target as HTMLInputElement;
-    if (range.type !== 'range' || !range.dataset.group) return;
+    if (range.type !== 'range' || !range.dataset.setting) return;
+    const value = Number(range.value);
     range.nextElementSibling!.textContent = range.value;
-    cb.onTrafficChange(range.dataset.group, Number(range.value));
+    const key = range.dataset.setting;
+    if (key === 'pedestrians') cb.store.set({ pedestrians: value });
+    else cb.store.set({ cars: { ...cb.store.get().cars, [key]: value } });
   });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     cb.onApply(selected, { open, closed });
+    drawTimeline();
+  });
+
+  // ------------------------------------------------------------ store -> controls
+
+  function sync(s: Settings): void {
+    mode.value = s.mode;
+    control.value = s.control;
+    control.disabled = s.mode === 'flashing';
+    weather.value = s.weather;
+    for (const box of form.querySelectorAll<HTMLInputElement>('input[data-flag]')) {
+      box.checked = Boolean(s[box.dataset.flag as keyof Settings]);
+    }
+    // With the day cycle on, darkness follows the clock.
+    const night = form.querySelector<HTMLInputElement>('#menu-night')!;
+    night.disabled = s.dayCycle;
+    nightLabel.textContent = t(s.dayCycle ? 'view.night.auto' : 'view.night');
+    for (const range of form.querySelectorAll<HTMLInputElement>('input[type="range"]')) {
+      const key = range.dataset.setting!;
+      const value = key === 'pedestrians' ? s.pedestrians : s.cars[key];
+      range.value = String(value);
+      range.nextElementSibling!.textContent = String(value);
+    }
+  }
+  cb.store.subscribe((s, changed) => {
+    sync(s);
+    // After main.ts has switched the simulation to the new mode (it subscribes later).
+    if (changed.has('mode')) queueMicrotask(() => load(selected));
+  });
+  onLangChange(() => {
+    sync(cb.store.get());
+    drawTimeline();
+    lastRush = lastPreempted = null; // redraw state-dependent labels on the next frame
   });
 
   form.inert = true;
+  setTab('signals');
+  sync(s0);
   load(0);
+
+  let lastRush: boolean | null = null;
+  let lastBusy: boolean | null = null;
+  let lastPreempted: boolean | null = null;
 
   return {
     select(index: number) {
+      if (tab !== 'signals') setTab('signals');
       load(index);
       if (!expanded) setExpanded(true);
+    },
+    refresh() {
+      load(selected);
+    },
+    frame(position, state) {
+      if (timeline && position !== null) {
+        const x = TL_LABEL + (position / timeline.cycle) * (TL_WIDTH - TL_LABEL);
+        playhead.setAttribute('x1', x.toFixed(2));
+        playhead.setAttribute('x2', x.toFixed(2));
+      }
+      playhead.style.display = position === null ? 'none' : '';
+      if (state.preempted !== lastPreempted) {
+        lastPreempted = state.preempted;
+        svg.classList.toggle('is-preempted', state.preempted);
+        if (timeline) legend.textContent = t(state.preempted ? 'timeline.preempted' : 'timeline.legend');
+      }
+      if (state.rush !== lastRush) {
+        lastRush = state.rush;
+        rushButton.classList.toggle('is-active', state.rush);
+        rushButton.textContent = t(state.rush ? 'traffic.rush.on' : 'traffic.rush');
+      }
+      if (state.emergencyBusy !== lastBusy) {
+        lastBusy = state.emergencyBusy;
+        emergencyButton.disabled = state.emergencyBusy;
+      }
     },
   };
 }

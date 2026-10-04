@@ -78,13 +78,16 @@ export interface TrafficGroup {
   lanes: Record<string, number>;
 }
 
-export type VehicleKind = 'sedan' | 'hatch' | 'van';
+export type VehicleKind = 'sedan' | 'hatch' | 'van' | 'bus' | 'truck' | 'moto' | 'ambulance';
 
 export interface VehicleType {
   kind: VehicleKind;
   length: number;
   width: number;
   weight: number;
+  /** Acceleration and top speed relative to a car. */
+  accel?: number;
+  speed?: number;
 }
 
 /** Sized after the cars parked in the background photo (about 40-46 x 18-19 px). */
@@ -93,6 +96,38 @@ export const VEHICLE_TYPES: VehicleType[] = [
   { kind: 'hatch', length: 36, width: 17, weight: 3 },
   { kind: 'van', length: 48, width: 20, weight: 1.2 },
 ];
+
+/** Added with `variety`: slow, long buses and lorries, and nimble motorbikes. */
+export const EXTRA_VEHICLE_TYPES: VehicleType[] = [
+  { kind: 'bus', length: 68, width: 20, weight: 0.5, accel: 0.5, speed: 0.85 },
+  { kind: 'truck', length: 58, width: 20, weight: 0.6, accel: 0.55, speed: 0.85 },
+  { kind: 'moto', length: 20, width: 8, weight: 0.9, accel: 1.5 },
+];
+
+export const AMBULANCE: VehicleType = { kind: 'ambulance', length: 48, width: 20, weight: 0 };
+
+/** Why a car is going slower than it could (for the "follow a car" label). */
+export type CarStatus =
+  | 'free' | 'curve' | 'start' | 'red' | 'yellow' | 'queue' | 'yield' | 'blocked' | 'crosswalk' | 'merge';
+
+/** A car crossing its stop line, for the statistics. */
+export interface PassEvent {
+  group: string;
+  lane: string;
+  /** Seconds it stood (or crawled) before the line. */
+  wait: number;
+  emergency: boolean;
+}
+
+/** Optional realism, off by default so the model stays simple to test. */
+export interface TrafficOptions {
+  /** Buses, lorries and motorbikes among the cars. */
+  variety: boolean;
+  /** Each driver gets their own top speed, acceleration, gap, reaction time and yellow-light habit. */
+  drivers: boolean;
+  /** Road grip: 1 dry, lower in the rain (slower corners, longer braking). */
+  grip: number;
+}
 
 export interface Car {
   id: number;
@@ -116,6 +151,24 @@ export interface Car {
   /** Set each step while it waits at its gate for another road's traffic. */
   yielding: boolean;
   indicator: 'left' | 'right' | null;
+  /** Driver/vehicle: top speed (px/s), acceleration (px/s^2), gap to the car in front (px). */
+  maxV: number;
+  accel: number;
+  gap: number;
+  /** Seconds before moving off once the way is clear. */
+  reaction: number;
+  /** Time spent so far reacting. */
+  starting: number;
+  /** Drives through a yellow it could still stop for, if close to the line. */
+  bold: boolean;
+  emergency: boolean;
+  /** What held the car back in the last step (see CarStatus). */
+  status: CarStatus;
+  /** Seconds spent standing before the stop line so far. */
+  wait: number;
+  passedLine: boolean;
+  /** While yielding: the other road's car it waits for, and why (for the debug view). */
+  blocker: { car: Car; why: 'merge' | 'claim' | 'in the way' | 'patience' | 'gap' } | null;
 }
 
 export const MIN_GAP = 7;
@@ -376,6 +429,9 @@ export function lightFor(control: Control, snap: SimSnapshot): Light {
 export class Traffic {
   readonly routes: Route[];
   cars: Car[] = [];
+  options: TrafficOptions = { variety: false, drivers: false, grip: 1 };
+  /** Cars that crossed their stop line since the last drainEvents(). */
+  private events: PassEvent[] = [];
   readonly conflicts = new Map<Route, Conflict[]>();
   readonly crosswalks = new Map<Route, CrosswalkZone[]>();
   /** People crossing the road, passed in each step. */
@@ -385,9 +441,9 @@ export class Traffic {
   private spawnTimers = new Map<string, number>();
   private targets = new Map<string, number>();
   /** Where each route's cars decide whether they may enter the junction. */
-  private gate = new Map<Route, number>();
+  readonly gate = new Map<Route, number>();
   /** Cars holding each conflict zone (keyed like Conflict.key). */
-  private claims = new Map<string, Set<Car>>();
+  readonly claims = new Map<string, Set<Car>>();
   /** The car that limited the last roomAhead result. */
   private leaderCar: Car | null = null;
 
@@ -450,6 +506,42 @@ export class Traffic {
     return this.cars.filter((c) => c.group === groupId).length;
   }
 
+  private get brake(): number {
+    return BRAKE * this.options.grip;
+  }
+
+  /** Stopping distance at speed v. */
+  private stopping(v: number): number {
+    return (v * v) / (2 * this.brake);
+  }
+
+  /** Stop-line crossings since the last call. */
+  drainEvents(): PassEvent[] {
+    const out = this.events;
+    this.events = [];
+    return out;
+  }
+
+  /** Cars standing (or crawling) before their stop line in these lanes. */
+  queued(lanes: readonly string[]): number {
+    return this.cars.filter((c) => lanes.includes(c.route.def.lane) && !c.passedLine && c.v < 3 && c.route.stopAt - c.s < 400).length;
+  }
+
+  /** Cars within `distance` px before their stop line in these lanes (moving or not). */
+  approaching(lanes: readonly string[], distance: number): number {
+    return this.cars.filter((c) => lanes.includes(c.route.def.lane) && !c.passedLine && c.route.stopAt - c.s <= distance).length;
+  }
+
+  /** An ambulance that has not yet got through the junction, if any. */
+  emergencyApproaching(): Car | null {
+    return this.cars.find((c) => c.emergency && c.s - c.length < c.route.stopAt + CLEAR_JUNCTION) ?? null;
+  }
+
+  /** Send an ambulance down a route. Null if the entry is blocked. */
+  spawnEmergency(route: Route): Car | null {
+    return this.spawn(route, 'emergency', AMBULANCE);
+  }
+
   /**
    * Induction loops ("induktivna petlja"): true if a car is standing in front of a stop
    * line that isn't letting it through.
@@ -471,10 +563,17 @@ export class Traffic {
   }
 
   /** Add a car at the start of a route if there's room. Returns it, or null. */
-  spawn(route: Route, group = route.def.lane): Car | null {
+  spawn(route: Route, group = route.def.lane, forced?: VehicleType): Car | null {
     const room = this.roomAhead(route, 0, null);
     if (room < 0) return null;
-    const type = this.pick(VEHICLE_TYPES.map((t) => [t, t.weight] as const));
+    const types = this.options.variety ? [...VEHICLE_TYPES, ...EXTRA_VEHICLE_TYPES] : VEHICLE_TYPES;
+    const type = forced ?? this.pick(types.map((t) => [t, t.weight] as const));
+    const emergency = type.kind === 'ambulance';
+    // Per-driver differences (only drawn when enabled, so seeded runs stay comparable).
+    const d = this.options.drivers && !emergency
+      ? { speed: 0.86 + this.random() * 0.2, accel: 0.75 + this.random() * 0.5, gap: 1 + this.random() * 0.7, reaction: 0.25 + this.random() * 0.65, bold: this.random() < 0.25 }
+      : { speed: 1, accel: 1, gap: 1, reaction: 0, bold: false };
+    const maxV = Math.min(MAX_SPEED * 1.05, MAX_SPEED * (type.speed ?? 1) * d.speed);
     const car: Car = {
       id: this.nextId++,
       group,
@@ -483,14 +582,25 @@ export class Traffic {
       length: type.length,
       width: type.width,
       s: 0,
-      v: Math.min(route.speed[0], Math.sqrt(2 * BRAKE * room)),
-      color: CAR_COLORS[Math.floor(this.random() * CAR_COLORS.length)],
+      v: Math.min(route.speed[0], maxV, Math.sqrt(2 * this.brake * room)),
+      color: emergency ? '#f4f4f4' : CAR_COLORS[Math.floor(this.random() * CAR_COLORS.length)],
       braking: false,
       blocked: false,
       cleared: false,
       waited: 0,
       yielding: false,
       indicator: null,
+      maxV,
+      accel: ACCEL * (type.accel ?? 1) * d.accel,
+      gap: MIN_GAP * d.gap,
+      reaction: d.reaction,
+      starting: 0,
+      bold: d.bold,
+      emergency,
+      status: 'free',
+      wait: 0,
+      passedLine: false,
+      blocker: null,
     };
     this.cars.push(car);
     return car;
@@ -506,7 +616,7 @@ export class Traffic {
         (z) =>
           z.crossing === crossing &&
           car.s - car.length < z.at[1] &&
-          car.s + (car.v * car.v) / (2 * BRAKE) > z.at[0] - CROSSWALK_STOP / 2,
+          car.s + this.stopping(car.v) > z.at[0] - CROSSWALK_STOP / 2,
       ),
     );
   }
@@ -524,16 +634,39 @@ export class Traffic {
     // Free distance for each car, from positions at the start of the step. (Claims made
     // here are seen by the cars evaluated after, so two cars can't both claim a zone.)
     const limits = this.cars.map((car) => this.limitFor(car, snap));
+    const grip = Math.sqrt(this.options.grip);
     this.cars.forEach((car, i) => {
-      const limit = limits[i];
+      let limit = limits[i];
       const { route } = car;
-      const curve = route.speed[Math.min(route.length, Math.max(0, Math.floor(car.s)))];
-      const target = Math.min(curve, Math.sqrt(2 * BRAKE * Math.max(0, limit)));
+      // A driver standing still takes a moment to react before moving off.
+      let reacting = false;
+      if (car.v < 1 && limit > 1 && car.starting < car.reaction) {
+        car.starting += dt;
+        limit = 0;
+        reacting = true;
+      } else if (limit <= 1) {
+        car.starting = 0;
+      }
+      const bend = route.speed[Math.min(route.length, Math.max(0, Math.floor(car.s)))];
+      const curve = bend * grip;
+      const free = Math.min(curve, car.maxV);
+      const brakeCap = Math.sqrt(2 * this.brake * Math.max(0, limit));
+      const target = Math.min(free, brakeCap);
+      if (reacting) car.status = 'start';
+      else if (brakeCap >= free) car.status = bend < MAX_SPEED - 1 && curve < car.maxV - 1 ? 'curve' : 'free';
       car.braking = target < car.v - 0.5 || car.v < 1;
-      car.v = car.v < target ? Math.min(target, car.v + ACCEL * dt) : Math.max(target, car.v - 3 * BRAKE * dt);
+      car.v = car.v < target ? Math.min(target, car.v + car.accel * dt) : Math.max(target, car.v - 3 * this.brake * dt);
       car.s += Math.min(car.v * dt, Math.max(0, limit));
       car.blocked = limit < 0.5 && car.v < 1;
       car.waited = car.yielding && car.blocked ? car.waited + dt : 0;
+      if (!car.passedLine) {
+        if (car.v < 3) car.wait += dt;
+        // Cars stop exactly on the line, so only count it once they're properly over it.
+        if (car.s > route.stopAt + 1) {
+          car.passedLine = true;
+          this.events.push({ group: car.group, lane: route.def.lane, wait: car.wait, emergency: car.emergency });
+        }
+      }
 
       const d = car.s - route.divergeAt;
       car.indicator = route.def.turn && d > -INDICATE_BEFORE && d < INDICATE_AFTER ? route.def.turn : null;
@@ -575,32 +708,55 @@ export class Traffic {
     return (weighted.find(([, w]) => (r -= w) < 0) ?? weighted[0])[0];
   }
 
-  /** Distance this car may still travel before it has to be stopped. */
+  /** Distance this car may still travel before it has to be stopped (and why, in car.status). */
   private limitFor(car: Car, snap: SimSnapshot): number {
-    const limit = Math.min(this.roomAhead(car.route, car.s, car), this.exitRoom(car), this.crosswalkRoom(car));
+    let limit = Infinity;
+    const bind = (value: number, status: CarStatus) => {
+      if (value < limit) [limit, car.status] = [value, status];
+    };
+    car.status = 'free';
+    bind(this.roomAhead(car.route, car.s, car), 'queue');
+    bind(this.exitRoom(car), 'queue');
+    bind(this.crosswalkRoom(car), 'crosswalk');
     car.yielding = false;
-    if (car.cleared) return Math.min(limit, this.mergeSafety(car)); // committed: only the car in front matters now
+    if (car.cleared) {
+      bind(this.mergeSafety(car), 'merge'); // committed: only the car in front matters now
+      return limit;
+    }
 
-    if (this.heldAtLine(car, snap)) return Math.min(limit, Math.max(0, car.route.stopAt - car.s));
+    const gate = this.gate.get(car.route)!;
+    const light = this.heldAtLine(car, snap);
+    if (light) {
+      // Wait at the gate if it comes before the stop line, or the car's nose would already
+      // stick into the oncoming lane it has to cross (and block those cars on green).
+      bind(Math.max(0, Math.min(car.route.stopAt, gate) - car.s), light === 'stop' ? 'red' : 'yellow');
+      return limit;
+    }
     // Decide when the gate is about a stopping distance away (or already reached).
-    const toGate = this.gate.get(car.route)! - car.s;
-    if (toGate > (car.v * car.v) / (2 * BRAKE) + 15) return limit;
+    const toGate = gate - car.s;
+    if (toGate > this.stopping(car.v) + 15) return limit;
     const verdict = this.canEnter(car, snap);
     if (verdict === 'go') {
       this.claimPassage(car);
       return limit;
     }
     car.yielding = verdict === 'other road';
-    return Math.min(limit, Math.max(0, toGate));
+    bind(Math.max(0, toGate), car.yielding ? 'yield' : 'blocked');
+    return limit;
   }
 
-  /** Stopping for the signal: red, or yellow when it can still stop comfortably. */
-  private heldAtLine(car: Car, snap: SimSnapshot): boolean {
+  /**
+   * Stopping for the signal: red, or yellow when it can still stop comfortably (a bold
+   * driver close to the line carries on). Returns the light it stops for, or null.
+   */
+  private heldAtLine(car: Car, snap: SimSnapshot): 'stop' | 'caution' | null {
     const toLine = car.route.stopAt - car.s;
-    if (toLine < -0.5) return false;
+    if (toLine < -0.5) return null;
     const light = lightFor(car.route.def.control, snap);
-    const stoppingDistance = (car.v * car.v) / (2 * BRAKE);
-    return light === 'stop' || (light === 'caution' && stoppingDistance <= toLine + 2);
+    if (light === 'stop') return 'stop';
+    if (light !== 'caution') return null;
+    if (car.bold && toLine < car.v * 1.6) return null;
+    return this.stopping(car.v) <= toLine + 2 ? 'caution' : null;
   }
 
   /**
@@ -610,6 +766,11 @@ export class Traffic {
    * through the crossings (and off the crosswalk) without stopping.
    */
   private canEnter(car: Car, snap: SimSnapshot): 'go' | 'other road' | 'no room' {
+    const block = (o: Car, why: NonNullable<Car['blocker']>['why']) => {
+      car.blocker = { car: o, why };
+      return 'other road' as const;
+    };
+    car.blocker = null;
     let clearUntil = car.route.stopAt + CLEAR_JUNCTION;
     for (const z of this.conflicts.get(car.route)!) {
       if (z.kind === 'merge') {
@@ -621,22 +782,22 @@ export class Traffic {
           if (o.route !== z.other || o.s - o.length > leaveAt) continue;
           const coming = o.cleared || (o.s > z.otherAt[0] && o.s - o.length < leaveAt);
           if (!coming) continue;
-          if ((leaveAt + o.length - o.s) / Math.max(o.v, 20) + MERGE_HEADWAY > arrival) return 'other road';
+          if ((leaveAt + o.length - o.s) / Math.max(o.v, 20) + MERGE_HEADWAY > arrival) return block(o, 'merge');
         }
         continue;
       }
-      for (const holder of this.claims.get(z.key) ?? []) if (holder.route === z.other) return 'other road';
+      for (const holder of this.claims.get(z.key) ?? []) if (holder.route === z.other) return block(holder, 'claim');
       const [o0, o1] = z.otherAt;
       for (const o of this.cars) {
         if (o.route !== z.other) continue;
-        if (o.s > o0 && o.s - o.length < o1) return 'other road'; // physically in the way
+        if (o.s > o0 && o.s - o.length < o1) return block(o, 'in the way');
         // Someone on the other road has run out of patience waiting: let them go first.
-        if (!o.cleared && o.waited > PATIENCE && o.waited > car.waited) return 'other road';
-        if (z.kind !== 'cross' || !z.yields || o.cleared || o.blocked || car.waited > PATIENCE) continue;
+        if (!o.cleared && o.waited > PATIENCE && o.waited > car.waited) return block(o, 'patience');
+        if (z.kind !== 'cross' || !z.yields || o.cleared || o.blocked || car.waited > PATIENCE || car.emergency) continue;
         // Gap acceptance: is a car with priority about to reach its own gate?
         const theirGate = this.gate.get(o.route)!;
         if (o.s > theirGate + 0.5 || this.heldAtLine(o, snap)) continue;
-        if (theirGate - o.s < 25 + o.v * GAP_TIME) return 'other road';
+        if (theirGate - o.s < 25 + (o.v * GAP_TIME) / this.options.grip) return block(o, 'gap');
       }
       clearUntil = Math.max(clearUntil, z.at[1]);
     }
@@ -698,7 +859,7 @@ export class Traffic {
       for (const o of this.cars) {
         if (o.route !== z.other || o.s < oj) continue;
         const virtual = o.s - oj + j;
-        if (virtual > car.s) room = Math.min(room, virtual - o.length - MIN_GAP - car.s);
+        if (virtual > car.s) room = Math.min(room, virtual - o.length - car.gap - car.s);
       }
     }
     return room;
@@ -745,7 +906,8 @@ export class Traffic {
       if (!ahead) continue;
       const rear = other.s - other.length;
       if (!sameRoute && (rear > prefix || s > prefix)) continue;
-      if (rear - MIN_GAP - s < room) [room, this.leaderCar] = [rear - MIN_GAP - s, other];
+      const gap = self?.gap ?? MIN_GAP;
+      if (rear - gap - s < room) [room, this.leaderCar] = [rear - gap - s, other];
     }
     return room;
   }

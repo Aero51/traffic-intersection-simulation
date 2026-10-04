@@ -1,0 +1,812 @@
+/* Toolbar, menu tabs and timeline, statistics, dialogs, followed car,
+   debug view, countdowns, tooltips, night and rain. */
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Pause stops every CSS animation (indicators, walking feet, blinking yellow, rain). */
+.stage.is-paused * {
+  animation-play-state: paused !important;
+}
+
+/* ---- Toolbar (bottom left, over the trees) ---- */
+
+.toolbar {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(16, 20, 26, 0.72);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+.tool {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #dfe6ee;
+  font: 600 12px/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.tool:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+.tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tool[aria-pressed="true"] {
+  background: #fff;
+  color: #1d2833;
+}
+.tool:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 1px;
+}
+.tool svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tool-speed {
+  min-width: 38px;
+}
+.tool .i-play,
+.tool.is-paused .i-pause,
+.tool .i-exit,
+.tool.is-on .i-enter {
+  display: none;
+}
+.tool.is-paused .i-play,
+.tool.is-on .i-exit {
+  display: inline;
+}
+.tool.is-paused {
+  background: #ffc928;
+  color: #1d2833;
+}
+
+/* ---- Menu tabs, timeline, extra buttons ---- */
+
+/* All tabs share the height of the tallest, so the header doesn't jump when switching. */
+@media (min-width: 721px) {
+  .menu-body {
+    display: grid;
+  }
+  .menu-tabs {
+    grid-row: 1;
+  }
+  .menu-panel {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .menu-panel[hidden] {
+    display: block;
+    visibility: hidden;
+  }
+}
+
+/* Closed: only the header shows at the bottom edge; hide the body once it has slid down. */
+.menu:not(.is-open) .menu-body {
+  visibility: hidden;
+  transition: visibility 0s 700ms;
+}
+
+.menu-tabs {
+  display: flex;
+  gap: calc(4 * var(--u));
+  margin-bottom: calc(8 * var(--u));
+}
+.menu-tabs button {
+  flex: 1;
+  height: calc(30 * var(--u));
+  border: 1px solid #a8abb0;
+  border-radius: calc(7 * var(--u));
+  background: linear-gradient(#fafafa, #e3e6ea);
+  color: #3a4250;
+  font: inherit;
+  font-size: calc(14 * var(--u));
+  cursor: pointer;
+}
+.menu-tabs button[aria-selected="true"] {
+  border-color: #303842;
+  background: linear-gradient(#5877a2, #4a6c9b);
+  color: #fff;
+}
+.menu-tabs button:focus-visible {
+  outline: 2px solid #3e6fd8;
+  outline-offset: 1px;
+}
+.menu-panel > .menu-card + .menu-card {
+  margin-top: calc(8 * var(--u));
+}
+
+.menu-timeline {
+  padding: calc(6 * var(--u)) calc(9 * var(--u)) calc(4 * var(--u));
+  border-bottom: 1px solid #a8abb0;
+}
+.timeline {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.timeline.is-preview rect {
+  opacity: 0.75;
+}
+.timeline.is-preempted {
+  opacity: 0.35;
+}
+.tl-label,
+.tl-tick {
+  font: 600 8px system-ui, sans-serif;
+  fill: #555;
+}
+.tl-tick {
+  font-weight: normal;
+  font-size: 7px;
+  text-anchor: middle;
+}
+.tl-end {
+  text-anchor: end;
+}
+.tl-row.is-selected .tl-label {
+  fill: #2f5bb7;
+}
+.tl-row.is-selected rect {
+  stroke: #2f5bb7;
+  stroke-width: 0.8;
+}
+.tl-playhead {
+  stroke: #111;
+  stroke-width: 1.2;
+}
+.timeline-legend {
+  margin-top: calc(2 * var(--u));
+  font-size: calc(11 * var(--u));
+  font-weight: normal;
+  color: #555;
+}
+
+.menu-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(6 * var(--u));
+}
+.menu-apply.menu-secondary {
+  background: linear-gradient(#fdfdfd, #d9dde3);
+  color: #1d2833;
+  text-shadow: none;
+}
+.menu-apply.menu-emergency {
+  background: linear-gradient(#e57373, #c62828);
+}
+.menu-apply.is-active {
+  background: linear-gradient(#ffd54f, #f9a825);
+  color: #1d2833;
+  text-shadow: none;
+}
+.menu-apply:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.menu select:disabled,
+.menu-check:disabled {
+  opacity: 0.5;
+}
+
+/* ---- Statistics panel ---- */
+
+.stats-panel {
+  position: absolute;
+  left: 10px;
+  bottom: 52px;
+  z-index: 2;
+  display: none;
+  width: max(250px, calc(270 * var(--u)));
+  max-height: calc(100% - 110px);
+  overflow: auto;
+  padding: 8px 10px 10px;
+  border-radius: 10px;
+  background: rgba(16, 20, 26, 0.84);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  color: #e6ebf1;
+  font: max(11px, calc(12 * var(--u))) / 1.3 system-ui, sans-serif;
+}
+.stats-panel.is-open {
+  display: block;
+}
+.stats-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.stats-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.15em;
+}
+.stats-head button,
+.dialog-close {
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.stats-reset {
+  padding: 2px 8px;
+}
+.stats-head .stats-close {
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+  line-height: 1;
+}
+.stats-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.stats-panel th,
+.stats-panel td {
+  padding: 2px 3px;
+  text-align: right;
+  white-space: nowrap;
+}
+.stats-panel th:first-child {
+  text-align: left;
+}
+.stats-panel thead th {
+  font-weight: normal;
+  color: #9fb0c2;
+  font-size: 0.9em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+.stats-panel thead th[title] {
+  cursor: help;
+}
+.stats-panel tr.total th,
+.stats-panel tr.total td {
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+}
+.spark {
+  display: block;
+  width: 60px;
+  height: 16px;
+  margin-left: auto;
+}
+.spark polyline {
+  fill: none;
+  stroke: #ffc928;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+.spark polygon {
+  fill: rgba(255, 201, 40, 0.18);
+  stroke: none;
+}
+.stats-peds {
+  margin: 6px 0;
+}
+.stats-panel .stats-compare {
+  width: 100%;
+  font-size: 1em;
+  padding: 5px 8px;
+}
+
+/* ---- Dialogs (help, comparison) ---- */
+
+.dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #1a2029;
+  color: #e6ebf1;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  font: 14px/1.45 system-ui, sans-serif;
+}
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dialog-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+}
+.dialog-close {
+  width: 30px;
+  height: 30px;
+  font-size: 20px;
+}
+.dialog-body {
+  padding: 12px 16px 16px;
+}
+.dialog-body p {
+  margin: 0 0 12px;
+  color: #c4ced9;
+}
+.keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+}
+.keys dt {
+  text-align: right;
+}
+.keys dd {
+  margin: 0;
+}
+kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 6px;
+  border: 1px solid #56606d;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #2a323d;
+  font: 600 12px/1.5 ui-monospace, monospace;
+  text-align: center;
+}
+.bench-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.bench-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.bench-controls select {
+  font: inherit;
+}
+.dialog .menu-apply {
+  font-size: 14px;
+  padding: 6px 16px;
+  border-radius: 5px;
+}
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.bench-table th,
+.bench-table td {
+  padding: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: right;
+}
+.bench-table thead th {
+  font-weight: normal;
+  font-size: 12px;
+  color: #9fb0c2;
+}
+.bench-table th[scope="row"],
+.bench-table thead th:first-child {
+  text-align: left;
+}
+.bench-table tr.is-best th[scope="row"]::after {
+  content: " \2605";
+  color: #ffc928;
+}
+.bench-table td.is-best {
+  color: #7ee08a;
+  font-weight: 600;
+}
+.bench-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.bench-progress > div {
+  width: 0;
+  height: 100%;
+  background: #5b8bd6;
+  transition: width 150ms;
+}
+.bench-use {
+  padding: 3px 10px;
+  border: 1px solid #56606d;
+  border-radius: 5px;
+  background: #2a323d;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.bench-use:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (max-width: 560px) {
+  .bench-table {
+    font-size: 12px;
+  }
+  .bench-table th,
+  .bench-table td {
+    padding: 4px 3px;
+  }
+}
+
+/* ---- Followed car ---- */
+
+.car.is-followed {
+  filter: drop-shadow(0 0 2px #ffc928) drop-shadow(0 0 2px #ffc928);
+}
+.follow-route {
+  fill: none;
+  stroke: #ffc928;
+  stroke-width: 3;
+  stroke-dasharray: 6 5;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.follow-tag {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, calc(-100% - max(14px, calc(18 * var(--u)))));
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(16, 20, 26, 0.88);
+  color: #fff;
+  font: max(10px, calc(11 * var(--u))) / 1.3 system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.follow-tag::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  border: 5px solid transparent;
+  border-top-color: rgba(16, 20, 26, 0.88);
+  transform: translateX(-50%);
+}
+.follow-tag small {
+  color: #b9c4d0;
+}
+.follow-tag .status-red,
+.follow-tag .status-yellow,
+.follow-tag .status-blocked {
+  color: #ff8a80;
+}
+.follow-tag .status-yield,
+.follow-tag .status-crosswalk,
+.follow-tag .status-queue,
+.follow-tag .status-merge {
+  color: #ffd54f;
+}
+.follow-tag .status-free,
+.follow-tag .status-start {
+  color: #a5d6a7;
+}
+
+/* ---- Ambulance beacons ---- */
+
+.beacon {
+  fill: #2979ff;
+  animation: beacon calc(0.5s / var(--sim-speed, 1)) steps(1, end) infinite;
+}
+.beacon-b {
+  animation-delay: calc(-0.25s / var(--sim-speed, 1));
+}
+@keyframes beacon {
+  0% {
+    fill: #2979ff;
+    opacity: 1;
+  }
+  50% {
+    fill: #0d1b4a;
+    opacity: 0.6;
+  }
+}
+.car-ambulance .beacon {
+  filter: url(#lamp-glow);
+}
+
+/* ---- Night ---- */
+
+.night-overlay {
+  fill: #14244a;
+  opacity: 0;
+  mix-blend-mode: multiply;
+}
+.street-lamps {
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+.lights {
+  opacity: 0;
+}
+.car-lights .beam {
+  mix-blend-mode: screen;
+}
+.glow-head {
+  fill: url(#glow-head);
+}
+.glow-tail {
+  fill: url(#glow-tail);
+  opacity: 0.45;
+}
+.car-lights.is-braking .glow-tail {
+  opacity: 1;
+}
+.glow-ind {
+  fill: url(#glow-ind);
+  opacity: 0;
+}
+.car-lights.indicating-left .ind-left,
+.car-lights.indicating-right .ind-right {
+  animation: indicator calc(0.7s / var(--sim-speed, 1)) steps(1, end) infinite;
+  animation-delay: var(--blink-delay, 0s);
+}
+.car-lights .glow-beacon {
+  fill: url(#glow-beacon);
+  animation: beacon-glow calc(0.5s / var(--sim-speed, 1)) steps(1, end) infinite;
+}
+.car-lights .glow-beacon.beacon-b {
+  animation-delay: calc(-0.25s / var(--sim-speed, 1));
+}
+@keyframes beacon-glow {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.1;
+  }
+}
+
+.day-clock {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(16, 20, 26, 0.72);
+  color: #fff;
+  font: 600 max(12px, calc(14 * var(--u))) / 1.2 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* ---- Rain ---- */
+
+.rain {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 800ms;
+}
+.scene-wrap.is-rain .rain {
+  opacity: 1;
+}
+.scene-wrap.is-rain .photo {
+  filter: saturate(0.8) contrast(1.08) brightness(0.82);
+}
+.rain-layer {
+  position: absolute;
+  inset: -50%;
+  background-image: repeating-linear-gradient(
+    105deg,
+    transparent 0 9px,
+    rgba(200, 220, 255, 0.28) 9px 10px,
+    transparent 10px 23px
+  );
+  background-size: 37px 61px;
+  animation: rain calc(0.45s / var(--sim-speed, 1)) linear infinite;
+}
+.rain-far {
+  opacity: 0.5;
+  background-size: 23px 41px;
+  animation-duration: calc(0.7s / var(--sim-speed, 1));
+}
+@keyframes rain {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -16px 61px;
+  }
+}
+.rain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(60, 80, 110, 0.18), rgba(30, 40, 60, 0.22));
+}
+
+/* ---- Debug view ---- */
+
+.debug {
+  display: none;
+}
+.debug.is-visible {
+  display: inline;
+}
+.dbg-route {
+  fill: none;
+  stroke-width: 1.2;
+  opacity: 0.8;
+}
+.dbg-stop {
+  stroke: #fff;
+  stroke-width: 2;
+}
+.dbg-gate {
+  fill: #ff4081;
+}
+.dbg-zone {
+  fill: none;
+  stroke-width: 6;
+  opacity: 0.35;
+}
+.dbg-cross {
+  stroke: #ff5252;
+}
+.dbg-merge {
+  stroke: #ff9800;
+}
+.dbg-zone.is-claimed {
+  opacity: 0.85;
+}
+.dbg-crosswalk {
+  fill: none;
+  stroke: #40c4ff;
+  stroke-width: 9;
+  opacity: 0.35;
+}
+.dbg-label {
+  font: 600 8px system-ui, sans-serif;
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 2.2px;
+  paint-order: stroke;
+  text-anchor: middle;
+}
+.dbg-fps {
+  position: absolute;
+  top: 44px;
+  left: 10px;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #7ee08a;
+  font: 600 12px ui-monospace, monospace;
+  pointer-events: none;
+}
+
+/* ---- Pedestrian countdown ---- */
+
+.countdown {
+  opacity: 0;
+  transition: opacity 200ms;
+}
+.countdown.is-visible {
+  opacity: 1;
+}
+.countdown rect {
+  fill: #111;
+  stroke: #2e7d32;
+  stroke-width: 0.8;
+}
+.countdown text {
+  fill: #5cff5c;
+  font: 700 10px ui-monospace, monospace;
+  text-anchor: middle;
+}
+
+/* ---- Signal tooltip and focus ---- */
+
+.signal:focus {
+  outline: none;
+}
+.signal:focus-visible .signal-body {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 2px;
+}
+.signal-tip {
+  position: absolute;
+  z-index: 4;
+  transform: translate(-50%, calc(-100% - 8px));
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(16, 20, 26, 0.92);
+  color: #fff;
+  font: max(11px, calc(12 * var(--u))) / 1.35 system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.signal-tip.is-below {
+  transform: translate(-50%, 8px);
+}
+.lamp-name {
+  font-weight: 600;
+}
+.lamp-R {
+  color: #ff6b5e;
+}
+.lamp-Y,
+.lamp-RY,
+.lamp-\* {
+  color: #ffd54f;
+}
+.lamp-G {
+  color: #69f06f;
+}
+
+/* ---- Phones: toolbar and statistics go below the map ---- */
+
+@media (max-width: 720px) {
+  .toolbar {
+    position: static;
+    justify-content: center;
+    width: fit-content;
+    margin: 10px auto 0;
+  }
+  .tool {
+    min-width: 38px;
+    height: 38px;
+  }
+  .stats-panel {
+    position: static;
+    width: 100%;
+    max-width: 420px;
+    max-height: none;
+    margin: 12px auto 0;
+    font-size: 13px;
+  }
+  .scene-wrap {
+    height: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rain-layer,
+  .beacon {
+    animation: none !important;
+  }
+}

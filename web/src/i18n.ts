@@ -27,11 +27,6 @@ const STRINGS = {
   'mode.normal': { hr: 'Glavni prednost', en: 'Main road priority' },
   'mode.secondary': { hr: 'Sporedni prednost', en: 'Side road priority' },
   'mode.flashing': { hr: 'Policajac', en: 'Flashing yellow' },
-  'menu.auto': { hr: 'Automatski režim', en: 'Automatic mode' },
-  'menu.auto.hint': {
-    hr: 'Semafori se izmjenjuju samo kad vozilo čeka na crvenom (induktivna petlja)',
-    en: 'Signals only change when a vehicle is waiting at a red light (induction loop)',
-  },
   'menu.signal': { hr: 'Semafor:', en: 'Signal:' },
   'menu.open': { hr: 'Vrijeme otvorenosti:', en: 'Green time:' },
   'menu.closed': { hr: 'Vrijeme zatvorenosti:', en: 'Red time:' },
@@ -57,6 +52,186 @@ const STRINGS = {
     hr: 'Vozila sa zapada (glavna cesta, gore lijevo)',
     en: 'Cars from the west (main road, top left)',
   },
+
+  // Menu tabs and new controls
+  'tab.signals': { hr: 'Semafori', en: 'Signals' },
+  'tab.traffic': { hr: 'Promet', en: 'Traffic' },
+  'tab.view': { hr: 'Prikaz', en: 'View' },
+  'menu.control': { hr: 'Upravljanje', en: 'Control' },
+  'control.fixed': { hr: 'Fiksni ciklus', en: 'Fixed cycle' },
+  'control.demand': { hr: 'Na zahtjev (petlje)', en: 'On demand (loops)' },
+  'control.actuated': { hr: 'Prilagodljivo', en: 'Actuated' },
+  'control.queue': { hr: 'Najdulja kolona', en: 'Longest queue' },
+  'control.hint': {
+    hr: 'Fiksni: ciklus uvijek teče. Na zahtjev: stoji dok nitko ne čeka na crvenom. Prilagodljivo: zeleno se produljuje dok vozila pristižu, a skraćuje kad ih nema. Najdulja kolona: zeleno dobiva cesta s više vozila koja čekaju.',
+    en: 'Fixed: the cycle always runs. On demand: it holds while nobody waits at red. Actuated: green is extended while cars keep coming and cut short when none do. Longest queue: the road with more waiting cars gets green.',
+  },
+  'menu.defaults': { hr: 'Zadano', en: 'Defaults' },
+  'menu.defaults.hint': { hr: 'Vrati zadana vremena ovog moda', en: 'Restore this mode\'s default timings' },
+  'timeline.label': { hr: 'Ciklus', en: 'Cycle' },
+  'timeline.legend': {
+    hr: 'žuto 2 s · crveno-žuto 1 s · sve crveno 1 s',
+    en: 'yellow 2 s · red+yellow 1 s · all-red 1 s',
+  },
+  'timeline.flashing': { hr: 'Treptanje žutog — nema ciklusa', en: 'Flashing yellow — no cycle' },
+  'timeline.preempted': { hr: 'Prednost hitnoj pomoći', en: 'Ambulance priority' },
+  'timeline.aria': { hr: 'Vremenski dijagram ciklusa semafora 1-5', en: 'Cycle diagram of signals 1-5' },
+  'traffic.ped': { hr: 'Pješaci', en: 'Pedestrians' },
+  'traffic.ped.desc': { hr: 'Pješaci koji sami dolaze i pritišću tipkalo (na minutu)', en: 'Pedestrians arriving and pressing the button on their own (per minute)' },
+  'traffic.ped.unit': { hr: '– pješaka na minutu', en: '– pedestrians per minute' },
+  'traffic.variety': { hr: 'Autobusi, kamioni, motori', en: 'Buses, lorries, motorbikes' },
+  'traffic.drivers': { hr: 'Različiti vozači', en: 'Different drivers' },
+  'traffic.drivers.hint': {
+    hr: 'Svaki vozač ima svoju brzinu, ubrzanje, razmak i vrijeme reakcije; neki prolaze na žuto',
+    en: 'Each driver has their own speed, acceleration, gap and reaction time; some go through on yellow',
+  },
+  'traffic.day': { hr: 'Dnevni ciklus', en: 'Day cycle' },
+  'traffic.day.hint': {
+    hr: 'Dan traje 24 minute: jutarnja i popodnevna gužva, mirna noć (noć se i vidi)',
+    en: 'A day lasts 24 minutes: morning and afternoon rush, quiet night (and it gets dark)',
+  },
+  'traffic.rush': { hr: 'Špica', en: 'Rush hour' },
+  'traffic.rush.hint': { hr: 'Dvostruko više vozila idućih 60 s (H)', en: 'Twice the traffic for the next 60 s (H)' },
+  'traffic.rush.on': { hr: 'Špica…', en: 'Rush…' },
+  'traffic.emergency': { hr: 'Hitna pomoć', en: 'Ambulance' },
+  'traffic.emergency.hint': {
+    hr: 'Pošalji vozilo hitne pomoći; semafori mu daju zeleno (E)',
+    en: 'Send an ambulance; the signals give it green (E)',
+  },
+  'view.weather': { hr: 'Vrijeme', en: 'Weather' },
+  'weather.dry': { hr: 'Suho', en: 'Dry' },
+  'weather.rain': { hr: 'Kiša', en: 'Rain' },
+  'view.night': { hr: 'Noć', en: 'Night' },
+  'view.night.auto': { hr: 'Noć (prati dnevni ciklus)', en: 'Night (follows the day cycle)' },
+  'view.sound': { hr: 'Zvuk', en: 'Sound' },
+  'view.stats': { hr: 'Statistika', en: 'Statistics' },
+  'view.debug': { hr: 'Prikaz putanja (debug)', en: 'Show routes (debug)' },
+  'view.copy': { hr: 'Kopiraj poveznicu', en: 'Copy link' },
+  'view.copied': { hr: 'Kopirano!', en: 'Copied!' },
+  'view.copy.hint': { hr: 'Poveznica s trenutnim postavkama', en: 'A link with the current settings' },
+  'view.reset': { hr: 'Vrati sve', en: 'Reset all' },
+  'view.reset.hint': { hr: 'Zadana vremena, promet i prikaz', en: 'Default timings, traffic and view' },
+
+  // Toolbar
+  'tool.pause': { hr: 'Pauza (razmaknica)', en: 'Pause (Space)' },
+  'tool.play': { hr: 'Pokreni (razmaknica)', en: 'Play (Space)' },
+  'tool.speed': { hr: 'Brzina simulacije (1–4)', en: 'Simulation speed (1–4)' },
+  'tool.step': { hr: 'Jedan korak (.)', en: 'Step one frame (.)' },
+  'tool.stats': { hr: 'Statistika (S)', en: 'Statistics (S)' },
+  'tool.help': { hr: 'Pomoć (?)', en: 'Help (?)' },
+  'tool.label': { hr: 'Upravljanje simulacijom', en: 'Simulation controls' },
+
+  // Statistics
+  'stats.title': { hr: 'Statistika', en: 'Statistics' },
+  'stats.approach': { hr: 'Smjer', en: 'Approach' },
+  'stats.flow': { hr: 'voz/min', en: 'cars/min' },
+  'stats.flow.hint': { hr: 'Vozila kroz raskrižje u zadnjoj minuti', en: 'Cars through the junction in the last minute' },
+  'stats.wait': { hr: 'čekanje', en: 'wait' },
+  'stats.wait.hint': { hr: 'Prosječno / najdulje čekanje na crti zaustavljanja (s)', en: 'Average / longest wait at the stop line (s)' },
+  'stats.queue': { hr: 'kolona', en: 'queue' },
+  'stats.queue.hint': { hr: 'Vozila u koloni sada / najviše', en: 'Cars queueing now / most so far' },
+  'stats.trend': { hr: 'zadnje 2 min', en: 'last 2 min' },
+  'stats.istok': { hr: 'Istok', en: 'East' },
+  'stats.sjever': { hr: 'Sjever', en: 'North' },
+  'stats.zapad': { hr: 'Zapad', en: 'West' },
+  'stats.total': { hr: 'Ukupno', en: 'Total' },
+  'stats.peds': { hr: 'Pješaci čekaju', en: 'Pedestrian wait' },
+  'stats.reset': { hr: 'Poništi', en: 'Reset' },
+  'stats.compare': { hr: 'Usporedi upravljanja…', en: 'Compare control…' },
+  'stats.close': { hr: 'Zatvori statistiku', en: 'Close statistics' },
+
+  // Comparison dialog
+  'bench.title': { hr: 'Usporedba upravljanja', en: 'Control comparison' },
+  'bench.intro': {
+    hr: 'Trenutne postavke (vremena, promet, pješaci, vozila) simuliraju se {n} minuta za svaki način upravljanja, s istim početnim slučajnim brojem.',
+    en: 'The current settings (timings, traffic, pedestrians, vehicles) are simulated for {n} minutes with each control strategy, from the same random seed.',
+  },
+  'bench.run': { hr: 'Pokreni usporedbu', en: 'Run comparison' },
+  'bench.running': { hr: 'Simuliram…', en: 'Simulating…' },
+  'bench.strategy': { hr: 'Upravljanje', en: 'Control' },
+  'bench.avgWait': { hr: 'Prosj. čekanje', en: 'Avg wait' },
+  'bench.maxWait': { hr: 'Najdulje', en: 'Longest' },
+  'bench.throughput': { hr: 'voz/min', en: 'cars/min' },
+  'bench.maxQueue': { hr: 'Najdulja kolona', en: 'Longest queue' },
+  'bench.pedWait': { hr: 'Pješaci čekaju', en: 'Ped. wait' },
+  'bench.best': { hr: 'najbolje', en: 'best' },
+  'bench.use': { hr: 'Koristi', en: 'Use' },
+  'bench.minutes': { hr: 'Trajanje (min)', en: 'Length (min)' },
+  'dialog.close': { hr: 'Zatvori', en: 'Close' },
+
+  // Help
+  'help.title': { hr: 'Pomoć i prečaci', en: 'Help and shortcuts' },
+  'help.click': {
+    hr: 'Klikni vozilo da ga pratiš (vidi brzinu i zašto stoji), klikni semafor 1-5 za njegova vremena. Prijeđi mišem preko semafora za stanje i odbrojavanje.',
+    en: 'Click a car to follow it (see its speed and why it stops), click signal 1-5 for its timings. Hover a signal for its state and countdown.',
+  },
+  'key.space': { hr: 'Pauza / nastavak', en: 'Pause / resume' },
+  'key.speed': { hr: 'Brzina 0,5× / 1× / 2× / 4×', en: 'Speed 0.5× / 1× / 2× / 4×' },
+  'key.step': { hr: 'Jedan korak (u pauzi)', en: 'Step one frame (while paused)' },
+  'key.fullscreen': { hr: 'Cijeli zaslon', en: 'Full screen' },
+  'key.night': { hr: 'Noć', en: 'Night' },
+  'key.rain': { hr: 'Kiša', en: 'Rain' },
+  'key.sound': { hr: 'Zvuk', en: 'Sound' },
+  'key.debug': { hr: 'Putanje i zone (debug)', en: 'Routes and zones (debug)' },
+  'key.stats': { hr: 'Statistika', en: 'Statistics' },
+  'key.emergency': { hr: 'Hitna pomoć', en: 'Ambulance' },
+  'key.rush': { hr: 'Špica', en: 'Rush hour' },
+  'key.walk': { hr: 'Tipkalo', en: 'Walk button' },
+  'key.help': { hr: 'Ova pomoć', en: 'This help' },
+  'key.escape': { hr: 'Zatvori / prestani pratiti vozilo', en: 'Close / stop following a car' },
+
+  // Signals: tooltips and announcements
+  'signal.vehicle': { hr: 'Semafor {n}', en: 'Signal {n}' },
+  'signal.pedestrian': { hr: 'Pješački semafor {n}', en: 'Pedestrian signal {n}' },
+  'signal.turn': { hr: 'Strelica {n}', en: 'Turn arrow {n}' },
+  'lamp.R': { hr: 'crveno', en: 'red' },
+  'lamp.Y': { hr: 'žuto', en: 'yellow' },
+  'lamp.G': { hr: 'zeleno', en: 'green' },
+  'lamp.RY': { hr: 'crveno-žuto', en: 'red+yellow' },
+  'lamp.*': { hr: 'treperi žuto', en: 'flashing yellow' },
+  'lamp.': { hr: 'isključeno', en: 'off' },
+  'signal.change': { hr: 'promjena za {n} s', en: 'changes in {n} s' },
+  'signal.held': { hr: 'čeka promet', en: 'waiting for traffic' },
+  'signal.noChange': { hr: 'bez promjene', en: 'no change' },
+  'announce.main': { hr: 'Glavna cesta: zeleno.', en: 'Main road: green.' },
+  'announce.side': { hr: 'Sporedna cesta: zeleno.', en: 'Side road: green.' },
+  'announce.allRed': { hr: 'Svi semafori: crveno.', en: 'All signals: red.' },
+  'announce.flashing': { hr: 'Semafori trepću žuto.', en: 'Signals flashing yellow.' },
+  'announce.pedMain': { hr: 'Pješaci preko glavne ceste: zeleno.', en: 'Pedestrians across the main road: green.' },
+  'announce.pedSide': { hr: 'Pješaci preko sporedne ceste: zeleno.', en: 'Pedestrians across the side road: green.' },
+  'announce.emergency': { hr: 'Hitna pomoć: semafori daju prednost.', en: 'Ambulance: signals give priority.' },
+
+  // Followed car
+  'car.kmh': { hr: 'km/h', en: 'km/h' },
+  'kind.sedan': { hr: 'Automobil', en: 'Car' },
+  'kind.hatch': { hr: 'Mali automobil', en: 'Small car' },
+  'kind.van': { hr: 'Kombi', en: 'Van' },
+  'kind.bus': { hr: 'Autobus', en: 'Bus' },
+  'kind.truck': { hr: 'Kamion', en: 'Lorry' },
+  'kind.moto': { hr: 'Motocikl', en: 'Motorbike' },
+  'kind.ambulance': { hr: 'Hitna pomoć', en: 'Ambulance' },
+  'status.free': { hr: 'vozi', en: 'driving' },
+  'status.curve': { hr: 'usporava za zavoj', en: 'slowing for a bend' },
+  'status.start': { hr: 'kreće', en: 'moving off' },
+  'status.red': { hr: 'čeka na crvenom', en: 'stopped at red' },
+  'status.yellow': { hr: 'staje na žuto', en: 'stopping for yellow' },
+  'status.queue': { hr: 'u koloni', en: 'in a queue' },
+  'status.yield': { hr: 'propušta vozila', en: 'giving way' },
+  'status.blocked': { hr: 'raskrižje zauzeto', en: 'junction blocked' },
+  'status.crosswalk': { hr: 'propušta pješake', en: 'waiting for pedestrians' },
+  'status.merge': { hr: 'uključuje se', en: 'merging' },
+  'route.nw-straight': { hr: 's istoka, ravno', en: 'from the east, straight on' },
+  'route.nw-right-turn': { hr: 's istoka, desno', en: 'from the east, turning right' },
+  'route.nw-left-lane': { hr: 's istoka, ravno (lijeva traka)', en: 'from the east, straight on (left lane)' },
+  'route.se-straight': { hr: 'sa zapada, ravno', en: 'from the west, straight on' },
+  'route.se-left-turn': { hr: 'sa zapada, lijevo', en: 'from the west, turning left' },
+  'route.se-right-lane': { hr: 'sa zapada, ravno (desna traka)', en: 'from the west, straight on (right lane)' },
+  'route.side-right-turn': { hr: 'sa sjevera, desno', en: 'from the north, turning right' },
+  'route.side-left-turn': { hr: 'sa sjevera, lijevo', en: 'from the north, turning left' },
+  'car.waited': { hr: 'čekao {n} s', en: 'waited {n} s' },
+
+  'clock.label': { hr: 'Doba dana', en: 'Time of day' },
+  'debug.fps': { hr: 'sl/s', en: 'fps' },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type StringKey = keyof typeof STRINGS;
@@ -81,8 +256,20 @@ export function lang(): Lang {
   return current;
 }
 
-export function t(key: StringKey): string {
-  return STRINGS[key][current];
+export function t(key: StringKey, vars?: Record<string, string | number>): string {
+  let s: string = STRINGS[key][current];
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+  return s;
+}
+
+/** Look up a key built at runtime (e.g. `status.${car.status}`), falling back to the key. */
+export function tk(key: string, vars?: Record<string, string | number>): string {
+  return key in STRINGS ? t(key as StringKey, vars) : key;
+}
+
+/** Numbers in the page's language (decimal comma in Croatian). */
+export function num(n: number, digits = 0): string {
+  return n.toLocaleString(current === 'hr' ? 'hr-HR' : 'en-GB', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 /** Switch language, update the page and remember the choice. */

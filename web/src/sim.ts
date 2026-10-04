@@ -24,7 +24,12 @@ export interface Lights {
   yellowBlinking: boolean;
 }
 
-export type Mode = 'normal' | 'flashing';
+/** "Mod rada": main road priority, side road priority, or flashing yellow ("Policajac"). */
+export type Mode = 'normal' | 'secondary' | 'flashing';
+/** The two timing plans; each keeps its own timings. */
+export type Plan = Exclude<Mode, 'flashing'>;
+/** Signals 1-4 (main road) move together, signal 5 (side road) is the other phase. */
+export type Phase = 'main' | 'side';
 
 export interface SimSnapshot {
   vehicles: Lights[];
@@ -41,8 +46,27 @@ export const DEFAULT_TIMINGS: SignalTiming[] = [
   { open: 4, closed: 13 },
 ];
 
-const YELLOW = 2; // green -> red transition
-const RED_YELLOW = 1; // red -> green transition
+/**
+ * "Sporedni prednost": the same 23 s cycle, but the side road gets the long green
+ * (signal 5 green from 9 s to 19 s, while signals 1-4 are red from 6 s to 22 s).
+ */
+export const SECONDARY_TIMINGS: SignalTiming[] = [
+  { open: 4, closed: 16 },
+  { open: 4, closed: 16 },
+  { open: 4, closed: 16 },
+  { open: 4, closed: 16 },
+  { open: 10, closed: 7 },
+];
+
+export const PLAN_TIMINGS: Record<Plan, SignalTiming[]> = { normal: DEFAULT_TIMINGS, secondary: SECONDARY_TIMINGS };
+
+export const YELLOW = 2; // green -> red transition
+export const RED_YELLOW = 1; // red -> green transition
+/** All-red clearance before the conflicting road gets red+yellow. */
+export const ALL_RED = 1;
+
+const MAIN_SIGNALS = [0, 1, 2, 3];
+const SIDE_SIGNALS = [4];
 
 interface Keyframe {
   at: number; // seconds into the cycle
@@ -55,10 +79,45 @@ interface Track {
   keyframes: Keyframe[];
 }
 
+/**
+ * Emergency vehicle priority: the normal cycle is suspended, the other road is cleared
+ * (yellow, all-red) and the ambulance's road gets green until release().
+ */
+interface Preemption {
+  phase: Phase;
+  releasing: boolean;
+  /** release() was called before the road had turned green; release once it has. */
+  pendingRelease: boolean;
+  /** Seconds into the current script. */
+  t: number;
+  keyframes: Keyframe[];
+}
+
+/** Lamp notation used by the timeline and the look-ahead: 'R', 'Y', 'G', 'RY', '' or '*'. */
+export function lampKey(l: Lights): string {
+  if (l.yellowBlinking) return '*';
+  return (l.red ? 'R' : '') + (l.yellow ? 'Y' : '') + (l.green ? 'G' : '');
+}
+
+export interface TimelineSegment {
+  from: number;
+  to: number;
+  lamps: string;
+}
+
+/** One cycle of the current plan, for each vehicle signal. */
+export interface Timeline {
+  cycle: number;
+  rows: TimelineSegment[][];
+}
+
 const dark = (): Lights => ({ red: false, yellow: false, green: false, yellowBlinking: false });
+const isGreen = (l: Lights) => l.green && !l.yellow && !l.red;
+const copyTimings = (t: SignalTiming[]) => t.map((x) => ({ ...x }));
 
 export class Simulation {
-  private timings: SignalTiming[];
+  private plans: Record<Plan, SignalTiming[]>;
+  private _plan: Plan = 'normal';
   private tracks: (Track | null)[] = [];
   private vehicles: Lights[] = Array.from({ length: VEHICLE_COUNT }, dark);
   private pedestrians: Lights[] = Array.from({ length: PEDESTRIAN_COUNT }, dark);
@@ -71,11 +130,12 @@ export class Simulation {
   private sideRequest = false;
   private mainCrossing = false;
   private sideCrossing = false;
+  private preemption: Preemption | null = null;
   private _time = 0;
   private _mode: Mode = 'normal';
 
   constructor(timings: SignalTiming[] = DEFAULT_TIMINGS) {
-    this.timings = timings.map((t) => ({ ...t }));
+    this.plans = { normal: copyTimings(timings), secondary: copyTimings(SECONDARY_TIMINGS) };
     this.startNormal();
   }
 
@@ -87,8 +147,22 @@ export class Simulation {
     return this._mode;
   }
 
+  /** The timing plan in use (or the one flashing mode will return to). */
+  get plan(): Plan {
+    return this._plan;
+  }
+
+  private get timings(): SignalTiming[] {
+    return this.plans[this._plan];
+  }
+
   timing(index: number): SignalTiming {
     return { ...this.timings[index] };
+  }
+
+  /** All timings of a plan (copies). */
+  planTimings(plan: Plan = this._plan): SignalTiming[] {
+    return copyTimings(this.plans[plan]);
   }
 
   /** Cycle length (s) of a vehicle signal's track. */
@@ -110,14 +184,37 @@ export class Simulation {
     return this.mainRequest || this.sideRequest;
   }
 
+  /** Pending Tipkalo requests per crossing (main: 6/7 across the main road, side: 8/9). */
+  get pedestrianRequests(): { main: boolean; side: boolean } {
+    return { main: this.mainRequest, side: this.sideRequest };
+  }
+
+  /** Which road has a steady green right now (null during changes, or when flashing). */
+  get greenPhase(): Phase | null {
+    if (MAIN_SIGNALS.some((i) => isGreen(this.vehicles[i]))) return 'main';
+    if (SIDE_SIGNALS.some((i) => isGreen(this.vehicles[i]))) return 'side';
+    return null;
+  }
+
+  /** A signal is between green and red (yellow or red+yellow, not blinking). */
+  get changing(): boolean {
+    return this.vehicles.some((v) => v.yellow && !v.yellowBlinking);
+  }
+
+  /** The road an emergency vehicle has been given priority on, if any. */
+  get preempted(): Phase | null {
+    return this.preemption?.phase ?? null;
+  }
+
   /**
    * "Tipkalo": pedestrians 6 and 7 get green at the main road's next red, and 8 and 9 at
    * signal 5's next red (as in the MVC version). Ignored in "Policajac" mode.
+   * `crossing` limits the request to one crossing (a person arriving at that kerb).
    */
-  requestPedestrians(): void {
-    if (this._mode !== 'normal') return;
-    this.mainRequest = true;
-    this.sideRequest = true;
+  requestPedestrians(crossing?: 'main' | 'side'): void {
+    if (this._mode === 'flashing') return;
+    if (crossing !== 'side') this.mainRequest = true;
+    if (crossing !== 'main') this.sideRequest = true;
   }
 
   /** Advance the clock by `dt` seconds, firing every keyframe in (time, time + dt]. */
@@ -125,7 +222,8 @@ export class Simulation {
     if (dt <= 0) return;
     const from = this._time;
     const to = from + dt;
-    this.fireBetween(from, to, false);
+    if (this.preemption) this.runScript(dt);
+    else this.fireBetween(from, to, false);
     this._time = to;
   }
 
@@ -133,10 +231,20 @@ export class Simulation {
   setMode(mode: Mode): void {
     if (mode === this._mode) return;
     this._mode = mode;
+    if (mode !== 'flashing') this._plan = mode;
     this.stopAll();
     if (mode === 'flashing') {
       for (const v of this.vehicles) v.yellowBlinking = true;
     } else {
+      this.startNormal();
+    }
+  }
+
+  /** Replace a plan's timings (reset, shared link). Restarts the cycle if that plan is running. */
+  setPlanTimings(plan: Plan, timings: SignalTiming[]): void {
+    this.plans[plan] = copyTimings(timings);
+    if (plan === this._plan && this._mode !== 'flashing') {
+      this.stopAll();
       this.startNormal();
     }
   }
@@ -150,7 +258,8 @@ export class Simulation {
    */
   applyTiming(index: number, timing: SignalTiming): void {
     this.timings[index] = { ...timing };
-    if (this._mode !== 'normal') return;
+    // While flashing (or giving way to an ambulance) the new timing waits for the next start.
+    if (this._mode === 'flashing' || this.preemption) return;
 
     const reference = index === 1 ? 2 : 1;
     const refPosition = this.cyclePosition(reference);
@@ -168,6 +277,122 @@ export class Simulation {
     this.replayTo(index, position);
   }
 
+  /**
+   * Emergency vehicle approaching on `phase`'s road: clear the other road and hold green
+   * for it until release(). Ignored when flashing or while another preemption runs.
+   */
+  preempt(phase: Phase): void {
+    if (this._mode === 'flashing') return;
+    const p = this.preemption;
+    if (p) {
+      if (p.phase === phase && !p.releasing) p.pendingRelease = false;
+      return;
+    }
+    this.preemption = { phase, releasing: false, pendingRelease: false, t: 0, keyframes: this.enterScript(phase) };
+    this.fireScriptAt(0);
+  }
+
+  /** The emergency vehicle has passed: change back and restart the normal cycle. */
+  release(): void {
+    const p = this.preemption;
+    if (!p || p.releasing) return;
+    if (p.keyframes.some((k) => k.at > p.t)) {
+      p.pendingRelease = true;
+      return;
+    }
+    this.startRelease();
+  }
+
+  /** Seconds into the cycle of a vehicle signal's track. */
+  cyclePosition(index: number): number {
+    const track = this.tracks[index];
+    if (!track) return 0;
+    const p = (this._time - track.offset) % track.cycle;
+    return p < 0 ? p + track.cycle : p;
+  }
+
+  /** Absolute time of the next keyframe (anything that can change a lamp), or Infinity. */
+  nextKeyframeTime(): number {
+    const p = this.preemption;
+    if (p) {
+      const next = p.keyframes.find((k) => k.at > p.t + 1e-9);
+      return next ? this._time + next.at - p.t : Infinity;
+    }
+    let best = Infinity;
+    for (const track of this.tracks) {
+      if (!track) continue;
+      const c = Math.floor((this._time - track.offset) / track.cycle);
+      for (const cycle of [c, c + 1]) {
+        for (const kf of track.keyframes) {
+          const t = track.offset + cycle * track.cycle + kf.at;
+          if (t > this._time + 1e-9 && t < best) best = t;
+        }
+      }
+    }
+    return best;
+  }
+
+  /** An independent copy, for looking ahead without touching this simulation. */
+  clone(): Simulation {
+    const c = new Simulation(this.plans.normal);
+    c.plans = { normal: copyTimings(this.plans.normal), secondary: copyTimings(this.plans.secondary) };
+    c._plan = this._plan;
+    c._mode = this._mode;
+    c._time = this._time;
+    // Copy the lamps first: keyframes capture the pedestrian lamp objects when built.
+    c.vehicles = this.vehicles.map((l) => ({ ...l }));
+    c.pedestrians = this.pedestrians.map((l) => ({ ...l }));
+    c.turns = this.turns.map((l) => ({ ...l }));
+    c.mainRequest = this.mainRequest;
+    c.sideRequest = this.sideRequest;
+    c.mainCrossing = this.mainCrossing;
+    c.sideCrossing = this.sideCrossing;
+    c.tracks = this.tracks.map((t, i) => (t ? { ...c.buildTrack(i, t.offset), cycle: t.cycle } : null));
+    const p = this.preemption;
+    c.preemption = p && { ...p, keyframes: p.releasing ? c.releaseScript(p.phase) : c.enterScript(p.phase) };
+    return c;
+  }
+
+  /**
+   * Seconds until a lamp group next changes (e.g. green -> yellow), looking at most
+   * `horizon` seconds ahead, or null if it doesn't (flashing, or held by an ambulance).
+   */
+  nextChange(kind: keyof SimSnapshot, index: number, horizon = 180): number | null {
+    const c = this.clone();
+    const start = lampKey(c[kind][index]);
+    while (c._time - this._time < horizon) {
+      const t = c.nextKeyframeTime();
+      if (!Number.isFinite(t)) return null;
+      c.advance(t - c._time + 1e-6);
+      if (lampKey(c[kind][index]) !== start) return c._time - this._time;
+    }
+    return null;
+  }
+
+  /** One cycle of the current plan from its start, for the timing diagram. Null when flashing. */
+  planTimeline(): Timeline | null {
+    if (this._mode === 'flashing') return null;
+    const s = new Simulation(this.plans.normal);
+    s.plans = { normal: copyTimings(this.plans.normal), secondary: copyTimings(this.plans.secondary) };
+    if (this._plan !== 'normal') s.setMode(this._plan);
+    const cycle = Math.max(...s.tracks.map((t) => t?.cycle ?? 0));
+    const rows: TimelineSegment[][] = s.vehicles.map((v) => [{ from: 0, to: cycle, lamps: lampKey(v) }]);
+    for (;;) {
+      const t = s.nextKeyframeTime();
+      if (!(t < cycle - 1e-9)) break;
+      s.advance(t - s._time + 1e-9);
+      s.vehicles.forEach((v, i) => {
+        const row = rows[i];
+        const last = row[row.length - 1];
+        const lamps = lampKey(v);
+        if (lamps === last.lamps) return;
+        last.to = t;
+        row.push({ from: t, to: cycle, lamps });
+      });
+    }
+    return { cycle, rows };
+  }
+
   // ---------------------------------------------------------------- internals
 
   private startNormal(): void {
@@ -180,6 +405,7 @@ export class Simulation {
   /** sviStop(): stop all tracks and turn every lamp off. */
   private stopAll(): void {
     this.tracks = [];
+    this.preemption = null;
     this.mainRequest = this.sideRequest = false;
     this.mainCrossing = this.sideCrossing = false;
     for (const group of [this.vehicles, this.pedestrians, this.turns]) {
@@ -192,13 +418,6 @@ export class Simulation {
       ped.green = green;
       ped.red = !green;
     }
-  }
-
-  private cyclePosition(index: number): number {
-    const track = this.tracks[index];
-    if (!track) return 0;
-    const p = (this._time - track.offset) % track.cycle;
-    return p < 0 ? p + track.cycle : p;
   }
 
   /** Re-run one track's keyframes from cycle start up to `position` to restore its lamps. */
@@ -265,7 +484,7 @@ export class Simulation {
       },
       {
         // One second of all-red clearance, then pedestrians 6 and 7 cross the main road.
-        at: open + YELLOW + 1,
+        at: open + YELLOW + ALL_RED,
         fire: () => {
           if (!drivesTurns || !this.mainRequest) return;
           this.mainRequest = false;
@@ -335,5 +554,101 @@ export class Simulation {
       { at: closed + open + 2, fire: () => { v().green = false; v().yellow = true; } },
       { at: closed + open + 4, fire: () => { v().yellow = false; v().red = true; } },
     ];
+  }
+
+  // ------------------------------------------------------------ preemption
+
+  private runScript(dt: number): void {
+    const p = this.preemption!;
+    const from = p.t;
+    p.t += dt;
+    for (const kf of p.keyframes) {
+      if (kf.at > from && kf.at <= p.t) kf.fire();
+      if (this.preemption !== p) return; // the release script restarted the cycle
+    }
+    if (!p.releasing && p.pendingRelease && !p.keyframes.some((k) => k.at > p.t)) this.startRelease();
+  }
+
+  private fireScriptAt(t: number): void {
+    for (const kf of this.preemption!.keyframes) if (kf.at === t) kf.fire();
+  }
+
+  private startRelease(): void {
+    const p = this.preemption!;
+    p.releasing = true;
+    p.pendingRelease = false;
+    p.t = 0;
+    p.keyframes = this.releaseScript(p.phase);
+    this.fireScriptAt(0);
+  }
+
+  private signals(ids: number[]): Lights[] {
+    return ids.map((i) => this.vehicles[i]);
+  }
+
+  /** Clear the other road (yellow, then red), all-red, then red+yellow and green for `phase`. */
+  private enterScript(phase: Phase): Keyframe[] {
+    const [target, other] = phase === 'main' ? [MAIN_SIGNALS, SIDE_SIGNALS] : [SIDE_SIGNALS, MAIN_SIGNALS];
+    const set = (l: Lights, red: boolean, yellow: boolean, green: boolean) => Object.assign(l, { red, yellow, green });
+    return [
+      {
+        at: 0,
+        fire: () => {
+          for (const t of this.turns) t.green = false;
+          this.mainCrossing = this.sideCrossing = false;
+          this.setCrossing(this.pedestrians, false);
+          for (const v of this.signals(other)) {
+            if (v.green) set(v, false, true, false); // green -> yellow
+            else if (v.red && v.yellow) v.yellow = false; // was about to go green: stay red
+          }
+        },
+      },
+      {
+        at: YELLOW,
+        fire: () => {
+          for (const v of this.signals(other)) set(v, true, false, false);
+          for (const v of this.signals(target)) if (!isGreen(v) && !(v.red && v.yellow)) set(v, true, false, false);
+        },
+      },
+      {
+        at: YELLOW + ALL_RED,
+        fire: () => {
+          for (const v of this.signals(target)) if (!isGreen(v)) set(v, true, true, false);
+        },
+      },
+      {
+        at: YELLOW + ALL_RED + RED_YELLOW,
+        fire: () => {
+          for (const v of this.signals(target)) set(v, false, false, true);
+        },
+      },
+    ];
+  }
+
+  /** Back to the normal cycle, which starts with the main road green. */
+  private releaseScript(phase: Phase): Keyframe[] {
+    if (phase === 'main') return [{ at: 0, fire: () => this.restart() }];
+    const side = this.vehicles[4];
+    return [
+      { at: 0, fire: () => Object.assign(side, { red: false, yellow: true, green: false }) },
+      { at: YELLOW, fire: () => Object.assign(side, { red: true, yellow: false, green: false }) },
+      {
+        at: YELLOW + ALL_RED,
+        fire: () => {
+          for (const v of this.signals(MAIN_SIGNALS)) Object.assign(v, { red: true, yellow: true, green: false });
+        },
+      },
+      { at: YELLOW + ALL_RED + RED_YELLOW, fire: () => this.restart() },
+    ];
+  }
+
+  /** Start the normal cycle afresh, keeping pending Tipkalo requests. */
+  private restart(): void {
+    this.preemption = null;
+    for (let i = 0; i < VEHICLE_COUNT; i++) this.vehicles[i] = dark();
+    for (const t of this.turns) t.green = false;
+    this.setCrossing(this.pedestrians, false);
+    this.mainCrossing = this.sideCrossing = false;
+    this.startNormal();
   }
 }
