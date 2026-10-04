@@ -111,7 +111,7 @@ const STRINGS = {
   'traffic.ped': { hr: 'Pješaci', en: 'Pedestrians' },
   'traffic.ped.desc': { hr: 'Pješaci koji sami dolaze i pritišću tipkalo (na minutu)', en: 'Pedestrians arriving and pressing the button on their own (per minute)' },
   'traffic.ped.unit': { hr: '– pješaka na minutu', en: '– pedestrians per minute' },
-  'traffic.variety': { hr: 'Autobusi, kamioni, motori', en: 'Buses, lorries, motorbikes' },
+  'traffic.variety': { hr: 'Autobusi, kamioni, motori, bicikli', en: 'Buses, lorries, motorbikes, bicycles' },
   'traffic.drivers': { hr: 'Različiti vozači', en: 'Different drivers' },
   'traffic.drivers.hint': {
     hr: 'Svaki vozač ima svoju brzinu, ubrzanje, razmak i vrijeme reakcije; neki prolaze na žuto',
@@ -294,6 +294,7 @@ const STRINGS = {
   'kind.bus': { hr: 'Autobus', en: 'Bus' },
   'kind.truck': { hr: 'Kamion', en: 'Lorry' },
   'kind.moto': { hr: 'Motocikl', en: 'Motorbike' },
+  'kind.bike': { hr: 'Bicikl', en: 'Bicycle' },
   'kind.ambulance': { hr: 'Hitna pomoć', en: 'Ambulance' },
   'status.free': { hr: 'vozi', en: 'driving' },
   'status.curve': { hr: 'usporava za zavoj', en: 'slowing for a bend' },

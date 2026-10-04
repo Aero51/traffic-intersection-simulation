@@ -234,7 +234,22 @@ describe('traffic options', () => {
     }
     expect(kinds).toContain('bus');
     expect(kinds).toContain('moto');
+    expect(kinds).toContain('bike');
     expect(speeds.size).toBeGreaterThan(5);
+  });
+
+  it('bicycles are slow and narrow, and still obey the signals', () => {
+    const traffic = new Traffic(ROUTE_DEFS, TRAFFIC_GROUPS, seeded(3));
+    traffic.options = { variety: true, drivers: false, grip: 1 };
+    let bike: ReturnType<Traffic['spawn']> = null;
+    for (let i = 0; i < 400 && !bike; i++) {
+      const car = traffic.spawn(traffic.routes[i % traffic.routes.length]);
+      if (car?.kind === 'bike') bike = car;
+      else traffic.cars = [];
+    }
+    expect(bike).not.toBeNull();
+    expect(bike!.maxV).toBeLessThan(40);
+    expect(bike!.width).toBeLessThan(10);
   });
 
   it('reports why a car is stopped', () => {

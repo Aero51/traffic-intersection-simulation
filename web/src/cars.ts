@@ -162,10 +162,26 @@ function motoSprite(car: Car): string {
     ${lamp('ind ind-right', L / 2 - 6.4, 4.2, 1.6, 1.4)}`;
 }
 
+/** Bicycle and cyclist seen from above: two wheels, a frame, handlebars, shoulders and a helmet. */
+function bikeSprite(car: Car): string {
+  const L = car.length;
+  return `
+    <ellipse cx="1" cy="1.5" rx="${f(L / 2)}" ry="3.4" fill="#000" opacity="0.3" filter="url(#car-shadow)"/>
+    <rect x="${f(-L / 2)}" y="-0.9" width="${L}" height="1.8" rx="0.9" fill="#1c1c1c"/>
+    <rect x="${f(L / 2 - 4.5)}" y="-3.4" width="1.3" height="6.8" rx="0.65" fill="#555"/>
+    <ellipse cx="-1" cy="0" rx="2.6" ry="3.4" fill="${car.color}" stroke="rgba(0,0,0,0.5)" stroke-width="0.5"/>
+    <circle cx="0.4" cy="0" r="1.9" fill="#eceff1" stroke="rgba(0,0,0,0.6)" stroke-width="0.5"/>
+    ${lamp('head', L / 2 - 1.2, 0, 1.2, 1.8)}
+    ${lamp('tail', -L / 2, 0, 1.2, 1.8)}
+    ${lamp('ind ind-left', L / 2 - 4.8, -3.4, 1.2, 1.2)}
+    ${lamp('ind ind-right', L / 2 - 4.8, 3.4, 1.2, 1.2)}`;
+}
+
 function sprite(car: Car): string {
   if (car.kind === 'bus') return busSprite(car);
   if (car.kind === 'truck') return truckSprite(car);
   if (car.kind === 'moto') return motoSprite(car);
+  if (car.kind === 'bike') return bikeSprite(car);
   return carSprite(car);
 }
 
@@ -173,7 +189,7 @@ function sprite(car: Car): string {
 function lightsSprite(car: Car): string {
   const L = car.length;
   const W = car.width;
-  const moto = car.kind === 'moto';
+  const moto = car.kind === 'moto' || car.kind === 'bike';
   const heads = moto ? [0] : [-W * 0.3, W * 0.3];
   const beam = (y: number) =>
     `<path class="beam" d="M${f(L / 2)},${f(y - 1.5)} L${f(L / 2 + 70)},${f(y - 16)} L${f(L / 2 + 70)},${f(y + 16)} L${f(L / 2)},${f(y + 1.5)} Z" fill="url(#beam)"/>`;

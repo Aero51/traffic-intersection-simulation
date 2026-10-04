@@ -19,7 +19,7 @@ export interface TrafficGroup {
   lanes: Record<string, number>;
 }
 
-export type VehicleKind = 'sedan' | 'hatch' | 'van' | 'bus' | 'truck' | 'moto' | 'ambulance';
+export type VehicleKind = 'sedan' | 'hatch' | 'van' | 'bus' | 'truck' | 'moto' | 'bike' | 'ambulance';
 
 export interface VehicleType {
   kind: VehicleKind;
@@ -38,11 +38,12 @@ export const VEHICLE_TYPES: VehicleType[] = [
   { kind: 'van', length: 48, width: 20, weight: 1.2 },
 ];
 
-/** Added with `variety`: slow, long buses and lorries, and nimble motorbikes. */
+/** Added with `variety`: slow, long buses and lorries, nimble motorbikes, and slow bicycles. */
 export const EXTRA_VEHICLE_TYPES: VehicleType[] = [
   { kind: 'bus', length: 68, width: 20, weight: 0.5, accel: 0.5, speed: 0.85 },
   { kind: 'truck', length: 58, width: 20, weight: 0.6, accel: 0.55, speed: 0.85 },
   { kind: 'moto', length: 20, width: 8, weight: 0.9, accel: 1.5 },
+  { kind: 'bike', length: 17, width: 7, weight: 0.7, accel: 0.45, speed: 0.32 },
 ];
 
 export const AMBULANCE: VehicleType = { kind: 'ambulance', length: 48, width: 20, weight: 0 };
@@ -62,7 +63,7 @@ export interface PassEvent {
 
 /** Optional realism, off by default so the model stays simple to test. */
 export interface TrafficOptions {
-  /** Buses, lorries and motorbikes among the cars. */
+  /** Buses, lorries, motorbikes and bicycles among the cars. */
   variety: boolean;
   /** Each driver gets their own top speed, acceleration, gap, reaction time and yellow-light habit. */
   drivers: boolean;
